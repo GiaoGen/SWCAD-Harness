@@ -1,0 +1,15 @@
+{
+  "programVersion": "0.2",
+  "operations": [
+    {"id":"base","kind":"create_extrude","semanticId":"plate","profile":{"kind":"centered_rectangle","widthMm":100,"heightMm":60},"depthMm":8},
+    {"id":"hole","kind":"create_through_hole","semanticId":"mounting_seed","host":"plate.top_face","diameterMm":6},
+    {"id":"pattern","kind":"create_rectangular_pattern","semanticId":"mounting_holes","seed":"mounting_seed","directionX":{"semanticId":"plate.direction_x","type":"linear_edge"},"directionY":{"semanticId":"plate.direction_y","type":"linear_edge"},"countX":2,"countY":2,"spacingXMm":60,"spacingYMm":30}
+  ],
+  "relations": [
+    {"kind":"hosted_on","subject":"mounting_seed","reference":"plate.top_face"},
+    {"kind":"pattern_seed","subject":"mounting_holes","reference":"mounting_seed"},
+    {"kind":"centered_about","subject":"mounting_holes","reference":"plate.local_frame"},
+    {"kind":"symmetric_about_axis","subject":"mounting_holes","reference":"plate.axis_x"},
+    {"kind":"equal_spacing","subject":"mounting_holes","reference":"mounting_seed"}
+  ]
+}

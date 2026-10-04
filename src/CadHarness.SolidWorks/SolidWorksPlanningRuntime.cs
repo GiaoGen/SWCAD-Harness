@@ -14,27 +14,29 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
     public RuntimeCapabilityCatalog Capabilities { get; }
     public string ModelContextJson { get; }
     private readonly CadProgram? current;
-    private SolidWorksPlanningRuntime(RuntimeCapabilityCatalog capabilities, CadProgram? current)
+    private readonly ParameterMutationRegistry mutations;
+    private SolidWorksPlanningRuntime(RuntimeCapabilityCatalog capabilities, CadProgram? current, ParameterMutationRegistry? mutations = null)
     {
-        Capabilities = capabilities; this.current = current;
+        Capabilities = capabilities; this.current = current; this.mutations = mutations ?? ParameterMutationRegistry.Default;
         ModelContextJson = current is null ? "null" : new CadProgramJson(ConstructionCatalog().Registry).Serialize(current);
     }
     public static SolidWorksPlanningRuntime ForConstruction() => new(ConstructionCatalog(), null);
 
-    public static SolidWorksPlanningRuntime ForEdit(SolidWorksExecutionContext context, CadState state)
+    public static SolidWorksPlanningRuntime ForEdit(SolidWorksExecutionContext context, CadState state, ParameterMutationRegistry? mutations = null)
     {
         context.CheckThread();
         if (!context.RelationContextUsable || context.MutationInProgress || context.RelationProgram is null ||
             state.Revision != context.RelationRevision || !state.Document.Matches(DocumentIdentityAdapter.ReadForBinding(context)) ||
             context.RelationDependencies is null || !StateRelationData.Dependencies(state).ToHashSet().SetEquals(context.RelationDependencies.Edges))
             throw new StateException("STALE_REFERENCE", "No matching usable live edit session for planning.");
-        return ForEditSnapshot(context.RelationProgram, state);
+        return ForEditSnapshot(context.RelationProgram, state, mutations);
     }
 
     // Pure snapshot projection supports M7's zero-Part tests. Execution still
     // performs M6's native revision, identity, binding and transaction checks.
-    public static SolidWorksPlanningRuntime ForEditSnapshot(CadProgram program, CadState state)
+    public static SolidWorksPlanningRuntime ForEditSnapshot(CadProgram program, CadState state, ParameterMutationRegistry? mutations = null)
     {
+        mutations ??= ParameterMutationRegistry.Default;
         StateValidation.Validate(state);
         var construction = ForConstruction(); var check = construction.Preflight(program);
         if (!check.IsValid) throw new StateException(check.Issues[0].Code, check.Issues[0].Message);
@@ -53,12 +55,15 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             var bound = new SemanticEntityBinder().Bind(state, OperationRegistry.Default.Get(OperationKind.EditParameter).Inputs[0],
                 new(operation.SemanticId!, SemanticType.FeatureRef));
             if (!bound.Succeeded) continue;
-            foreach (var parameter in RelationParameterEditor.SupportedFields.Keys)
+            foreach (var descriptor in mutations.Descriptors.Where(d => d.OwnerKind == operation.Kind))
             {
+                var parameter = descriptor.Parameter;
                 var bindings = state.Bindings.Where(b => b.OwnerFeatureSemanticId == operation.SemanticId && b.Parameter == parameter).ToArray();
-                if (!TransactionalParameterBackend.IsExecutableParameter(operation, parameter) || bindings.Length != 1) continue;
-                var expected = operation.Parameters[RelationParameterEditor.SupportedFields[parameter]];
-                var scalar = expected is LengthParameter length ? length.Millimeters : ((CountParameter)expected).Value;
+                if (!mutations.TryGet(operation, parameter, out _) || bindings.Length != 1) continue;
+                var affected = new DependencyGraph(StateRelationData.Dependencies(state)).AffectedBy(new[] { operation.SemanticId! });
+                if (state.Features.Where(f => affected.Contains(f.SemanticId)).Any(f => f.ReferenceHealth != ReferenceHealth.Healthy) ||
+                    state.Entities.Where(e => affected.Contains(e.OwnerFeatureSemanticId)).Any(e => e.ReferenceHealth != ReferenceHealth.Healthy)) continue;
+                var scalar = mutations.Expected(operation, parameter);
                 if (Math.Abs(state.Parameters.Single(p => p.SemanticId == bindings[0].ParameterSemanticId).Value - scalar) > GeometryMath.ToleranceMm) continue;
                 var contract = EditableParameters.Contract(parameter);
                 if (contract.Kind == ParameterKind.Count) contract = contract with { Minimum = 2, Maximum = FeaturePreflight.MaximumPatternInstances };
@@ -66,15 +71,16 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             }
         }
         var contracts = edits.Count == 0 ? Array.Empty<OperationContract>() : new[] { OperationRegistry.Default.Get(OperationKind.EditParameter) };
-        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m7", PlanningMode.EditModel, contracts,
+        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m9a", PlanningMode.EditModel, contracts,
             Array.Empty<ProfileKind>(), Array.Empty<RelationKind>(), edits, new[]
             {
                 "One edit_parameter per plan, using a healthy bound target/parameter pair in this snapshot.",
                 "Only active native pattern directions can be edited; count changes must preserve that direction's active status.",
+                "Registered extrusion_depth and through-hole hole_diameter edits preserve host/layout legality and require native readback of dependent geometry.",
                 "Existing design relations are retained and solved by the runtime; do not emit new relations.",
                 "Execution requires the same usable live construction session and committed state revision."
             });
-        return new(catalog, normalized);
+        return new(catalog, normalized, mutations);
     }
 
     private static RuntimeCapabilityCatalog ConstructionCatalog()
@@ -116,12 +122,7 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             var construction = program;
             if (Capabilities.Mode == PlanningMode.EditModel)
             {
-                construction = RelationParameterEditor.Apply(current!, program.Operations.Single());
-                var target = program.Operations[0].Input("target")!.References[0].SemanticId;
-                var before = LinearPatternHandler.Dimensions(current!.Operations.Single(o => o.SemanticId == target));
-                var after = LinearPatternHandler.Dimensions(construction.Operations.Single(o => o.SemanticId == target));
-                if (before.Swap != after.Swap || (before.Y > 1) != (after.Y > 1))
-                    throw new StateException(FailureCodes.OperationUnsupported, "Edit changes active native pattern directions.");
+                construction = mutations.ApplyProgram(current!, program.Operations.Single());
             }
             var solved = new DesignRelationEngine().Solve(construction).Program;
             var result = new RelationBackend().Preflight(solved);

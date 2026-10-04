@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–8
+# CAD Harness v0.2 — Milestones 0–8 + M9A
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -11,6 +11,8 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 构建仅编译，不调用 SOLIDWORKS；Bootstrap 检查不激活 COM。SDK/interop 配置和结果见 `docs/milestone-0-verification.md`。
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
+
+最新扩展 **M9A COMPLETE**：原生参数 mutation 注册表、厚度/通孔孔径事务编辑、阵列实例读回和相应 Planner 能力投影。完整 M9 泛化评估尚未执行，M9B+ 未实现。M0–M8 以下各节保留各阶段验收时的范围；M9A 的当前能力见末节。
 
 Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。Milestone 9 未实现。
 
@@ -287,4 +289,38 @@ Judge 接收不可变的小候选投影（语义 ID/类型、所属特征 ID/类
 
 M8 专属 **48/48 纯/mock 测试通过**，14 项目 Release 构建 **0 警告、0 错误**。M8 纯测试无需安装 SOLIDWORKS 或读取 COM 注册表。创建/关闭 **0/0 Parts**，真实 Judge 请求 **0**。按 PRD 保留可选 Jev 适配器后续接入，没有配置 Jev 依赖。原生读取/验证保持既有确定性路径，异步结果使用前由调用方在 COM 所属 STA 核对当前文档/revision 和原生引用。详见 `docs/milestone-8-verification.md` 与 `artifacts/milestone8/pure-result.json`。
 
-**Milestone 9 NOT IMPLEMENTED**。
+## M9A — 可注册原生参数 mutation
+
+`IParameterMutationHandler` 将参数的可执行条件、转换限制、验证风险、原生读取/修改、回滚载荷和必需后置条件交给各 handler。`ParameterMutationRegistry` 使用显式 owner/parameter/IR 字段契约注册，拒绝重复描述，支持调用方注入。原生适配器改为按注册表分派；通用 `MutationTransaction`、Binder、ChangeSet/DirtySet、ValidationScope 与 AtomicStateStore 无需改写。
+
+| Handler | 实际默认编辑能力 |
+|---|---|
+| `PatternScalarMutationHandler` | 迁移已有线性/矩形阵列计数和间距；保留活动方向限制及计数拓扑升级 |
+| `ExtrusionDepthMutationHandler` | 当前矩形 blind extrusion 的 `extrusion_depth` |
+| `HoleDiameterMutationHandler` | 当前 through-hole 种子的 `hole_diameter`；原生阵列实例同步验证 |
+
+Planner 的 edit catalog 由同一注册表生成，并要求目标/依赖健康、唯一参数绑定和状态值一致。移除 handler 后能力及 schema 随之缩小；未注册的厚度以外轮廓尺寸、盲孔深度/孔径、圆角/倒角编辑不暴露。创建能力仍只有原有矩形轮廓及处理器，没有 Circle/CircularPattern。
+
+```csharp
+var registry = ParameterMutationRegistry.Default; // 也可由明确的 handler 集合构造。
+var adapter = new TransactionalParameterBackend(context, registry);
+var plannerRuntime = SolidWorksPlanningRuntime.ForEdit(context, store.Load(), registry);
+var transaction = new MutationTransaction<NativeEditPreparation, NativeEditRollback>(store, adapter);
+var result = transaction.Execute(editOperation);
+```
+
+```powershell
+.\scripts\test-milestone9a.ps1
+# 已完成一次原生验收，通常无需重新创建 Part。
+.\scripts\test-milestone9a.ps1 -Live -PartTemplate 'C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2024\templates\gb_part.prtdot'
+# 仅复核落盘的原生几何/事务/生命周期证据，不连接 COM 或创建 Part。
+.\scripts\test-milestone9a.ps1 -VerifyEvidence
+```
+
+M9A **26/26 纯测试通过**；15 项目 Release 构建 **0 警告、0 错误**。同一个 G2 Part 完成厚度 **8→10 mm**、四孔 **Ø6→Ø8 mm**，以及厚度/孔径修改后失败回滚、真实原子提交失败回滚和已注册阵列 handler 的继续使用检查。厚度/孔径各只读 **1/6 参数**，Level 2 验证依赖孔壁、位置和贯穿边界。
+
+创建/关闭 **1/1 Part**，原活动状态恢复；专属账本预算 **1/2**，没有消费剩余尝试。原生末尾曾因精确浮点比较将 `7.999999999999998 mm` 与 8 判为不等；已改用既有 `1e-6 mm` 容差，对全部 8 个已完成原生阶段及最终状态做零-Part 证据复核。原始失败报告保留，成功复核记录在 `artifacts/milestone9a/native-evidence-verification.json`。
+
+本扩展仍使用当前托管构建会话；没有新增组合文件重开/控制器重启恢复、任意拓扑恢复、原生文件与 JSON 联合提交或构造事务回滚。详细记录见 `docs/milestone-9a-verification.md`。
+
+**M9B+ NOT IMPLEMENTED；完整 Milestone 9 泛化评估未执行。**

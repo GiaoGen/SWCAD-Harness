@@ -8,36 +8,28 @@ using SolidWorks.Interop.sldworks;
 namespace CadHarness.SolidWorks;
 
 public sealed record NativeEditPreparation(CadProgram Before, RelationPlan After, string Target,
-    EditableParameter Parameter, double ExpectedValue, ChangeSet ChangeSet, FullValidationReason Reasons)
+    EditableParameter Parameter, double ExpectedValue, ChangeSet ChangeSet, FullValidationReason Reasons,
+    IParameterMutationHandler Handler)
     : MutationPreparation(ChangeSet, Reasons);
 
 public sealed record NativeEditRollback(CadState State, CadProgram Program, DependencyGraph Dependencies,
-    OperationNode Pattern, IReadOnlyDictionary<string, Point2D> SeedPositions, object SessionSnapshot);
+    IParameterMutationHandler Handler, object NativePayload, IReadOnlyDictionary<string, Point2D> SeedPositions, object SessionSnapshot);
 
-// Finite native adapter for the existing M5 count/spacing vocabulary. The
-// generic coordinator supports other adapters without knowing these operations.
+// Generic native parameter adapter. Parameter-specific access and rollback are
+// supplied by the registry; pure MutationTransaction remains unchanged.
 public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditPreparation, NativeEditRollback>
 {
     // Shared by native input resolution and the planner's runtime projection.
-    public static bool IsExecutableParameter(OperationNode owner, EditableParameter parameter)
-    {
-        if (!RelationParameterEditor.SupportedFields.ContainsKey(parameter) || !EditableParameters.IsOwnedBy(parameter, owner)) return false;
-        if (owner.Kind == OperationKind.CreateLinearPattern) return true;
-        if (owner.Kind != OperationKind.CreateRectangularPattern) return false;
-        var d = LinearPatternHandler.Dimensions(owner);
-        return parameter switch
-        {
-            EditableParameter.PatternCountX or EditableParameter.PatternSpacingX => !d.Swap,
-            EditableParameter.PatternCountY or EditableParameter.PatternSpacingY => d.Swap || d.Y > 1,
-            _ => false
-        };
-    }
+    public static bool IsExecutableParameter(OperationNode owner, EditableParameter parameter) =>
+        ParameterMutationRegistry.Default.TryGet(owner, parameter, out _);
     private readonly SolidWorksExecutionContext context;
+    private readonly ParameterMutationRegistry registry;
     private readonly List<ValidationReadSet> reads = new();
     public IReadOnlyList<ValidationReadSet> ValidationReads => reads.AsReadOnly();
     public bool RecoveryAllowed => false;
     public bool Recover(NativeEditPreparation prepared) => false;
-    public TransactionalParameterBackend(SolidWorksExecutionContext context) => this.context = context;
+    public TransactionalParameterBackend(SolidWorksExecutionContext context, ParameterMutationRegistry? registry = null)
+    { this.context = context; this.registry = registry ?? ParameterMutationRegistry.Default; }
 
     public NativeEditPreparation ResolveInputs(CadState state, OperationNode edit)
     {
@@ -49,7 +41,7 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
             !StateRelationData.Relations(state).ToHashSet().SetEquals(context.RelationProgram.Relations) ||
             !StateRelationData.Dependencies(state).ToHashSet().SetEquals(context.RelationDependencies.Edges))
             throw new StateException("STALE_REFERENCE", "Loaded state differs from the live document/configuration/revision/relations.");
-        var proposed = RelationParameterEditor.Apply(context.RelationProgram, edit);
+        var proposed = registry.ApplyProgram(context.RelationProgram, edit);
         var target = edit.Input("target")!.References[0];
         var bound = new SemanticEntityBinder().Bind(state, OperationRegistry.Default.Get(OperationKind.EditParameter).Inputs[0], new(target.SemanticId, target.Type));
         if (!bound.Succeeded) throw new StateException(bound.FailureCode!, bound.Message);
@@ -57,8 +49,7 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         if (feature is null || PersistentReferenceAdapter.Capture(context, feature) != PersistentReferenceAdapter.Capture(context, context.DirectFeature(target.SemanticId)))
             throw new StateException("STALE_REFERENCE", "Bound edit target differs from the native session owner.");
         var parameter = edit.Parameter<ParameterNameParameter>("parameter").Value;
-        if (!IsExecutableParameter(context.Operation(target.SemanticId), parameter))
-            throw new StateException(FailureCodes.OperationUnsupported, "Parameter has no active native scalar accessor in this session.");
+        var handler = registry.Get(context.Operation(target.SemanticId), parameter);
         var binding = state.Bindings.Where(b => b.OwnerFeatureSemanticId == target.SemanticId && b.Parameter == parameter).ToArray();
         if (binding.Length != 1) throw new StateException("BINDING_UNRESOLVED", "Parameter has no unique managed binding.");
         var plan = new DesignRelationEngine().Solve(proposed);
@@ -78,18 +69,22 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         var changes = new ChangeSet(DirtySetIds(changed), new[] { binding[0].ParameterSemanticId }, DirtySetIds(entities));
         var value = edit.Parameter<EditValueParameter>("value").Value switch
         { LengthParameter length => length.Millimeters, CountParameter count => count.Value, _ => throw new StateException(FailureCodes.OperationUnsupported, "Unsupported scalar edit.") };
-        var risk = parameter is EditableParameter.PatternCount or EditableParameter.PatternCountX or EditableParameter.PatternCountY ? FullValidationReason.HighRiskTopology : FullValidationReason.None;
-        return new(context.RelationProgram, plan, target.SemanticId, parameter, value, changes, risk);
+        var risk = handler.ValidationReasons(context.Operation(target.SemanticId), parameter);
+        return new(context.RelationProgram, plan, target.SemanticId, parameter, value, changes, risk, handler);
     }
 
     public void Preflight(CadState state, NativeEditPreparation prepared)
     {
         var check = new CompositionBackend().Preflight(prepared.After.Program with { Relations = Array.Empty<DesignRelation>() });
         if (!check.IsValid) throw new StateException(check.FailureCode!, check.Message);
-        var before = LinearPatternHandler.Dimensions(prepared.Before.Operations.Single(o => o.SemanticId == prepared.Target));
-        var after = LinearPatternHandler.Dimensions(prepared.After.Program.Operations.Single(o => o.SemanticId == prepared.Target));
-        if (before.Swap != after.Swap || (before.Y > 1) != (after.Y > 1))
-            throw new StateException(FailureCodes.OperationUnsupported, "Scalar edits preserve active native pattern directions.");
+        prepared.Handler.ValidateTransition(prepared.Before.Operations.Single(o => o.SemanticId == prepared.Target),
+            prepared.After.Program.Operations.Single(o => o.SemanticId == prepared.Target), prepared.Parameter);
+        foreach (var hole in prepared.After.Program.Operations.Where(o => o.Kind == OperationKind.CreateBlindHole))
+        {
+            var root = prepared.After.Program.Operations.Single(o => hole.Input("host")!.References[0].SemanticId == o.SemanticId + ".top_face");
+            if (hole.Parameter<LengthParameter>("depthMm").Millimeters >= root.Parameter<LengthParameter>("depthMm").Millimeters)
+                throw new StateException(FailureCodes.PreconditionFailed, "Blind-hole depth must remain below host thickness.");
+        }
         var dirty = DirtySet.Expand(state, prepared.Changes);
         var scope = ValidationScope.Select(state, dirty, prepared.ValidationReasons);
         try
@@ -108,30 +103,21 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
 
     public NativeEditRollback CaptureRollback(CadState state, NativeEditPreparation prepared)
     {
-        var seeds = prepared.Changes.ChangedFeatures.Where(id => IsHole(context.Operation(id))).ToDictionary(id => id, id =>
+        var seeds = prepared.Changes.ChangedFeatures.Where(id => IsHole(context.Operation(id)) &&
+            Placement(context.Operation(id)) != Placement(prepared.After.Program.Operations.Single(o => o.SemanticId == id))).ToDictionary(id => id, id =>
         { var actual = NativeHoleProfile.Read(context, id); return new Point2D(actual.CenterMm.X, actual.CenterMm.Y); });
         var original = prepared.Before.Operations.Single(o => o.SemanticId == prepared.Target);
-        var data = (ILinearPatternFeatureData)context.DirectFeature(prepared.Target).GetDefinition();
-        var d = LinearPatternHandler.Dimensions(original);
-        var parameters = new Dictionary<string, OperationParameter>(original.Parameters);
-        if (original.Kind == OperationKind.CreateLinearPattern)
-        { parameters["count"] = new CountParameter(data.D1TotalInstances); parameters["spacingMm"] = new LengthParameter(data.D1Spacing * 1000); }
-        else
-        {
-            parameters["countX"] = new CountParameter(d.Swap ? 1 : data.D1TotalInstances);
-            parameters["countY"] = new CountParameter(d.Swap ? data.D1TotalInstances : data.D2TotalInstances);
-            if (!d.Swap) parameters["spacingXMm"] = new LengthParameter(data.D1Spacing * 1000);
-            if (d.Y > 1 || d.Swap) parameters["spacingYMm"] = new LengthParameter((d.Swap ? data.D1Spacing : data.D2Spacing) * 1000);
-        }
-        return new(state, prepared.Before, context.RelationDependencies!, original with { Parameters = parameters }, seeds, context.SnapshotOutputs());
+        return new(state, prepared.Before, context.RelationDependencies!, prepared.Handler,
+            prepared.Handler.Capture(context, original, prepared.Parameter), seeds, context.SnapshotOutputs());
     }
 
     public ChangeSet Execute(NativeEditPreparation prepared)
     {
         context.MutationInProgress = true;
-        foreach (var operation in prepared.After.Program.Operations.Where(IsHole).Where(o => prepared.Changes.ChangedFeatures.Contains(o.SemanticId!)))
+        foreach (var operation in prepared.After.Program.Operations.Where(IsHole).Where(o => prepared.Changes.ChangedFeatures.Contains(o.SemanticId!) &&
+            Placement(o) != Placement(context.Operation(o.SemanticId!))))
             NativeHoleProfile.SetPlacement(context, operation.SemanticId!, Placement(operation));
-        NativePatternEditor.Apply(context, prepared.After.Program.Operations.Single(o => o.SemanticId == prepared.Target), prepared.Parameter);
+        prepared.Handler.Apply(context, prepared.After.Program.Operations.Single(o => o.SemanticId == prepared.Target), prepared.Parameter);
         return prepared.Changes;
     }
     public bool Rebuild() => context.Document.ForceRebuild3(false);
@@ -141,10 +127,11 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         // API bools are checked by SetPlacement/ModifyDefinition. Rebuild and
         // transaction ownership are independent mandatory Level 0 checks.
         if (!context.MutationInProgress) throw new StateException("TRANSACTION_INTEGRITY_FAILED", "Native mutation ownership was lost.");
+        prepared.Handler.ValidateNative(context, prepared.After.Program, prepared.Target, prepared.Parameter);
     }
     public CadState ValidateFinal(CadState state, NativeEditPreparation prepared, ValidationScope scope)
     {
-        foreach (var id in prepared.Changes.ChangedFeatures.Where(id => IsHole(context.Operation(id)))) context.RefreshHoleWall(id);
+        foreach (var id in prepared.After.Dependencies.AffectedBy(prepared.Changes.ChangedFeatures).Where(id => IsHole(context.Operation(id)))) context.RefreshHoleWall(id);
         var candidate = Verify(state, prepared.After.Program, scope, "final", checked(state.Revision + 1));
         var idParameter = prepared.Changes.ChangedParameters.Single();
         RelationNativeReadback.Near(candidate.Parameters.Single(p => p.SemanticId == idParameter).Value, prepared.ExpectedValue, "Edited parameter was not applied.");
@@ -159,13 +146,18 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
     public void Rollback(NativeEditRollback rollback)
     {
         foreach (var (id, placement) in rollback.SeedPositions) NativeHoleProfile.SetPlacement(context, id, placement);
-        NativePatternEditor.Apply(context, rollback.Pattern);
+        rollback.Handler.Restore(context, rollback.NativePayload);
         context.UpdateConstructedOperations(rollback.Program); context.RelationDependencies = rollback.Dependencies;
         context.RelationRevision = rollback.State.Revision;
         context.RestoreOutputs(rollback.SessionSnapshot); context.MutationInProgress = false;
     }
     public void ValidateRestored(CadState state, NativeEditRollback rollback, ValidationScope scope)
     {
+        foreach (var binding in state.Bindings.Where(b => registry.TryGet(rollback.Program.Operations.Single(o => o.SemanticId == b.OwnerFeatureSemanticId), b.Parameter, out _)))
+        {
+            var owner = rollback.Program.Operations.Single(o => o.SemanticId == binding.OwnerFeatureSemanticId);
+            registry.Get(owner, binding.Parameter).ValidateNative(context, rollback.Program, owner.SemanticId!, binding.Parameter);
+        }
         var restored = Verify(state, rollback.Program, scope, "rollback", state.Revision);
         foreach (var parameter in state.Parameters)
             RelationNativeReadback.Near(restored.Parameters.Single(p => p.SemanticId == parameter.SemanticId).Value, parameter.Value, "Rollback parameter differs from committed state.");
@@ -186,7 +178,7 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         {
             var binding = state.Bindings.Single(b => b.ParameterSemanticId == id);
             var op = expected.Operations.Single(o => o.SemanticId == binding.OwnerFeatureSemanticId);
-            var desired = ExpectedParameter(op, binding.Parameter);
+            var desired = registry.Expected(op, binding.Parameter);
             RelationNativeReadback.Near(observed.Parameters.Single(p => p.SemanticId == id).Value, desired, "Native parameter differs from expected program.");
             if (stage == "preflight") RelationNativeReadback.Near(desired, state.Parameters.Single(p => p.SemanticId == id).Value, "Committed scalar differs from the session program.");
         }
@@ -202,20 +194,6 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
             if (context.DirectFeature(id).GetErrorCode2(out var warning) != 0 || warning)
                 throw new StateException("FEATURE_REBUILD_FAILED", "Managed feature has native error/warning: " + id);
     }
-    private static double ExpectedParameter(OperationNode op, EditableParameter parameter) => parameter switch
-    {
-        EditableParameter.ExtrusionDepth or EditableParameter.BlindHoleDepth => op.Parameter<LengthParameter>("depthMm").Millimeters,
-        EditableParameter.HoleDiameter => op.Parameter<LengthParameter>("diameterMm").Millimeters,
-        EditableParameter.PatternSpacing => op.Parameter<LengthParameter>("spacingMm").Millimeters,
-        EditableParameter.PatternSpacingX => op.Parameter<LengthParameter>("spacingXMm").Millimeters,
-        EditableParameter.PatternSpacingY => op.Parameter<LengthParameter>("spacingYMm").Millimeters,
-        EditableParameter.PatternCount => op.Parameter<CountParameter>("count").Value,
-        EditableParameter.PatternCountX => op.Parameter<CountParameter>("countX").Value,
-        EditableParameter.PatternCountY => op.Parameter<CountParameter>("countY").Value,
-        EditableParameter.FilletRadius => op.Parameter<LengthParameter>("radiusMm").Millimeters,
-        EditableParameter.ChamferDistance => op.Parameter<LengthParameter>("distanceMm").Millimeters,
-        _ => throw new StateException(FailureCodes.OperationUnsupported, "No native accessor for parameter.")
-    };
     private static void CheckGeometry(SemanticGeometry? actual, SemanticGeometry? expected)
     {
         if (actual == expected) return;

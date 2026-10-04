@@ -140,6 +140,23 @@ public sealed partial class SolidWorksExecutionContext
 internal sealed record NativeCircleState(Point3 CenterMm, double RadiusMeters);
 internal static class NativeHoleProfile
 {
+    internal static void SetDiameter(SolidWorksExecutionContext context, string owner, double diameterMm)
+    {
+        var doc = context.Document; var manager = (ISketchManager)doc.SketchManager;
+        NativeTopology.Select(doc, context.HoleProfile(owner), false, 0);
+        try
+        {
+            doc.EditSketch();
+            var sketch = (ISketch?)manager.ActiveSketch ?? throw new NativeOperationException("GEOMETRY_INVALID", "Cannot edit the bound hole sketch.");
+            if (!Circle(sketch).SetRadius(Millimeters.ToMeters(diameterMm) / 2))
+                throw new NativeOperationException("PARAMETER_NOT_APPLIED", "Native hole sketch radius was not applied.");
+        }
+        finally
+        {
+            if (manager.ActiveSketch is not null) manager.InsertSketch(false);
+            doc.ClearSelection2(true);
+        }
+    }
     internal static ISketchArc Circle(ISketch sketch) => NativeTopology.Unique(NativeTopology.Objects<object>(sketch.GetSketchSegments())
         .OfType<ISketchArc>().Where(a => a.IsCircle() != 0), "circle sketch segment");
     internal static Point3 Transform(Point3 p, IMathTransform transform, double scale)

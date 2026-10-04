@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('All','Bootstrap','Milestone3','Milestone4','Milestone5','Milestone6','Milestone7','Milestone8')][string]$Scope = 'All', [string]$InteropDir = $env:SOLIDWORKS_INTEROP_DIR)
+param([ValidateSet('All','Bootstrap','Milestone3','Milestone4','Milestone5','Milestone6','Milestone7','Milestone8','Milestone9A')][string]$Scope = 'All', [string]$InteropDir = $env:SOLIDWORKS_INTEROP_DIR)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'sdk-environment.ps1')
@@ -22,6 +22,7 @@ $taskTarget = switch ($Scope) {
     'Milestone6' { Join-Path $taskRoot 'tests/CadHarness.Transactions.Tests/CadHarness.Transactions.Tests.csproj' }
     'Milestone7' { Join-Path $taskRoot 'tests/CadHarness.Planning.Tests/CadHarness.Planning.Tests.csproj' }
     'Milestone8' { Join-Path $taskRoot 'tests/CadHarness.Judging.Tests/CadHarness.Judging.Tests.csproj' }
+    'Milestone9A' { Join-Path $taskRoot 'tests/CadHarness.ParameterMutations.Tests/CadHarness.ParameterMutations.Tests.csproj' }
     default { Join-Path $taskRoot 'CadHarness.sln' }
 }
 & $taskSdk build $taskTarget --configuration Release --nologo --disable-build-servers "-p:SolidWorksInteropDir=$taskInterop" '-p:NuGetAudit=false'
