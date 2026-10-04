@@ -11,7 +11,7 @@ public sealed record BindingQuery(string? SemanticId = null, SemanticType? Type 
 public sealed record BindingResult(bool Succeeded, string? FailureCode, string Message,
     SemanticEntityNode? Entity, IReadOnlyList<string> Candidates);
 
-public sealed class SemanticEntityBinder
+public sealed partial class SemanticEntityBinder
 {
     public const int MaximumRankedCandidates = 64;
     public BindingResult Bind(CadState state, InputContract slot, BindingQuery query)

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using CadHarness.Ir;
 using CadHarness.State;
@@ -9,6 +10,8 @@ namespace CadHarness.SolidWorks;
 
 public sealed class CreateExtrudeHandler : IOperationBackendHandler
 {
+    public static System.Collections.Generic.IReadOnlyList<ProfileKind> SupportedProfiles { get; } =
+        Array.AsReadOnly(new[] { ProfileKind.CenteredRectangle });
     public OperationKind Kind => OperationKind.CreateExtrude;
 
     public PreflightResult Preflight(OperationNode operation)
@@ -19,7 +22,8 @@ public sealed class CreateExtrudeHandler : IOperationBackendHandler
             var issue = validation.Issues[0];
             return new(false, issue.Code, issue.Path + ": " + issue.Message);
         }
-        if (operation.Kind != Kind || operation.Parameter<ProfileParameter>("profile").Value is not CenteredRectangleProfile rectangle)
+        if (operation.Kind != Kind || !SupportedProfiles.Contains(operation.Parameter<ProfileParameter>("profile").Value.Kind) ||
+            operation.Parameter<ProfileParameter>("profile").Value is not CenteredRectangleProfile rectangle)
             return new(false, FailureCodes.OperationUnsupported, "Milestone 2 supports only create_extrude with a centered rectangle profile.");
         try
         {

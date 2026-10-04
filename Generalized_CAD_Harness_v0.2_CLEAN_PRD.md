@@ -1430,6 +1430,17 @@ Start with deterministic fixtures and/or mocked structured model responses.
 
 Then add one configurable frontier LLM planner.
 
+### Runtime capability projection (mandatory)
+
+Planner MUST NOT consume the whole IR OperationRegistry
+as if every IR operation were executable.
+
+Introduce a runtime capability projection/catalog.
+
+The planner may only receive operations, parameter edits,
+profiles and relations that the current SOLIDWORKS runtime
+can actually execute.
+
 ### Native Part budget
 
 Default:

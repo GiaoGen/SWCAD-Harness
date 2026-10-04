@@ -18,6 +18,20 @@ public sealed record NativeEditRollback(CadState State, CadProgram Program, Depe
 // generic coordinator supports other adapters without knowing these operations.
 public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditPreparation, NativeEditRollback>
 {
+    // Shared by native input resolution and the planner's runtime projection.
+    public static bool IsExecutableParameter(OperationNode owner, EditableParameter parameter)
+    {
+        if (!RelationParameterEditor.SupportedFields.ContainsKey(parameter) || !EditableParameters.IsOwnedBy(parameter, owner)) return false;
+        if (owner.Kind == OperationKind.CreateLinearPattern) return true;
+        if (owner.Kind != OperationKind.CreateRectangularPattern) return false;
+        var d = LinearPatternHandler.Dimensions(owner);
+        return parameter switch
+        {
+            EditableParameter.PatternCountX or EditableParameter.PatternSpacingX => !d.Swap,
+            EditableParameter.PatternCountY or EditableParameter.PatternSpacingY => d.Swap || d.Y > 1,
+            _ => false
+        };
+    }
     private readonly SolidWorksExecutionContext context;
     private readonly List<ValidationReadSet> reads = new();
     public IReadOnlyList<ValidationReadSet> ValidationReads => reads.AsReadOnly();
@@ -43,6 +57,8 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         if (feature is null || PersistentReferenceAdapter.Capture(context, feature) != PersistentReferenceAdapter.Capture(context, context.DirectFeature(target.SemanticId)))
             throw new StateException("STALE_REFERENCE", "Bound edit target differs from the native session owner.");
         var parameter = edit.Parameter<ParameterNameParameter>("parameter").Value;
+        if (!IsExecutableParameter(context.Operation(target.SemanticId), parameter))
+            throw new StateException(FailureCodes.OperationUnsupported, "Parameter has no active native scalar accessor in this session.");
         var binding = state.Bindings.Where(b => b.OwnerFeatureSemanticId == target.SemanticId && b.Parameter == parameter).ToArray();
         if (binding.Length != 1) throw new StateException("BINDING_UNRESOLVED", "Parameter has no unique managed binding.");
         var plan = new DesignRelationEngine().Solve(proposed);

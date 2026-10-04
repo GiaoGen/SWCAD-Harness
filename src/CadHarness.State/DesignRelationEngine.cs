@@ -221,6 +221,7 @@ public sealed class EqualSpacingHandler : IDesignRelationHandler
 
 public sealed class DesignRelationEngine
 {
+    public IReadOnlyList<RelationKind> SupportedKinds => handlers.Keys.ToArray();
     public static PatternLayout ReadLayout(CadProgram program, string subject) => new RelationContext(program).Layout(subject);
     private readonly IReadOnlyDictionary<RelationKind, IDesignRelationHandler> handlers = new IDesignRelationHandler[]
     { new CenteredAboutHandler(), new SymmetricAboutAxisHandler(), new HostedOnHandler(), new PatternSeedHandler(), new EqualSpacingHandler() }.ToDictionary(h => h.Kind);

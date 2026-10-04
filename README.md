@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–6
+# CAD Harness v0.2 — Milestones 0–8
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -12,7 +12,7 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
 
-Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 未实现。
+Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。Milestone 9 未实现。
 
 包含 `CadProgram`、`OperationNode`、`OperationKind`、`OperationInput`、`OperationParameter`、`OperationContract`、`OperationRegistry`、语义类型/角色、严格 JSON 解析与序列化、程序验证，以及从契约生成的 JSON Schema。
 
@@ -65,7 +65,7 @@ Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Miles
 
 构建产物放在忽略的 `artifacts/` 或项目 `bin/obj` 中。测试不需要第三方包，不连接或启动 SOLIDWORKS，不打开/创建 Part。
 
-上述 Milestone 1 项目和纯测试不调用 SOLIDWORKS。语义绑定器、关系引擎由 M5 实现；Jev、HTTP 规划器和基准仍未实现。
+上述 Milestone 1 项目和纯测试不调用 SOLIDWORKS。语义绑定器、关系引擎由 M5 实现，HTTP Planner 由 M7 实现；Jev 和基准仍未实现。
 
 ## Milestone 2 — 单个原生矩形拉伸
 
@@ -225,4 +225,66 @@ M6 纯测试 **33/33 PASS**，Release 构建 **0 警告、0 错误**。原生验
 
 创建 **1**、关闭/丢弃 **1**、测试所有文档剩余 **0**，原活动状态恢复，预算 **1/3**。独立耐久账本 `artifacts/milestone6/native-budget.json` 不得删除以绕过限制；原生各次调用记录追加到 `native-result.json`。没有历史回归、广泛原生套件、性能基准或 LLM 调用。详细文件清单、证据与限制见 `docs/milestone-6-verification.md`。
 
-M6 限制：原生适配器仍使用当前构建会话，支持范围为既有阵列标量编辑；方向激活/停用、厚度/孔径等参数、组合重开/控制器重启恢复及任意拓扑重解析未扩展。原子提交针对 CADState JSON，未实现原生 Part 文件与 JSON 的跨文件联合提交。原生适配器当前不启用自动恢复策略；通用事务的一次可选恢复与完整升级已做纯验证。读取集合验证不等同于性能提升测量。**Milestone 7 NOT IMPLEMENTED**。
+M6 入口限制：原生适配器仍使用当前构建会话，支持范围为既有阵列标量编辑；方向激活/停用、厚度/孔径等参数、组合重开/控制器重启恢复及任意拓扑重解析未扩展。原子提交针对 CADState JSON，未实现原生 Part 文件与 JSON 的跨文件联合提交。原生适配器当前不启用自动恢复策略；通用事务的一次可选恢复与完整升级已做纯验证。读取集合验证不等同于性能提升测量。
+
+## Milestone 7 — Planner 与运行时能力投影
+
+已将本次新增的 mandatory capability projection 要求写入 PRD M7。IR 的 `OperationRegistry` 表示类型系统的词汇，规划时只使用 `SolidWorksPlanningRuntime` 从当前后端生成的 `RuntimeCapabilityCatalog`。Planner 提示、Structured Outputs schema、严格解析器和能力检查均使用这份投影，不读取完整 IR registry/schema。能力检查之后仍执行现有后端的纯预检；Planner 没有原生执行回调。
+
+| 范围 | Planner 可收到的能力 |
+|---|---|
+| 创建操作 | 当前注册的矩形拉伸、通孔/盲孔、线性/矩形阵列、圆角、倒角，共 7 类 |
+| 轮廓 | 拉伸只接受 `centered_rectangle`；孔内部的圆形草图不代表可执行圆盘拉伸或独立 circle_profile 操作 |
+| 关系 | `hosted_on`、`pattern_seed`、`equal_spacing`、`centered_about`、`symmetric_about_axis` |
+| 当前模型编辑 | 只提供健康且唯一绑定的阵列目标及其活动方向计数/间距；计数值保持活动方向数 |
+| 提前排除 | 圆盘拉伸、圆周阵列、厚度/孔径/圆角半径/倒角距离编辑、未实现关系、失效或漂移绑定 |
+
+创建模式要求一个初始 XY 矩形拉伸、在计划内引用前序输出、孔使用初始顶面、重复方向给出明确间距并满足有限实例/宿主范围。编辑模式每个计划只有一个 `edit_parameter`，沿用运行时现有关系，不与创建混合。纯 snapshot 和 live session 投影共用规则；live 入口额外核对文档/配置/revision/依赖与可用会话。最终原生执行仍由 M5 创建或 M6 事务入口负责。
+
+`CadPlanner` 接收自然语言，向 `IStructuredPlanSource` 请求一次响应，解析严格 envelope，再进行投影 IR 验证、能力检查与运行时预检。结果为 planned、unsupported、rejected、failed 或 cancelled，失败没有部分可执行程序。`FixturePlanSource` 使用调用方提供的精确意图→响应映射；未匹配意图明确 unsupported，生产代码没有板件预设。`OpenAiPlanSource` 使用一条可配置 frontier 模型 Responses 请求，发送 `text.format=json_schema`、`strict=true`、`store=false`；无工具、无循环代理、无自动重试。
+
+```powershell
+.\scripts\test-milestone7.ps1
+.\scripts\plan.ps1 -Intent '创建一块80×50×10毫米的矩形板，两个直径8毫米的通孔，沿X轴居中间距40毫米' `
+  -Fixtures tests/CadHarness.Planning.Tests/Fixtures/intent-responses.json `
+  -Output artifacts/milestone7/plan.json
+```
+
+使用 frontier LLM 时设置 `CAD_HARNESS_PLANNER_MODEL` 和 `OPENAI_API_KEY`，然后运行 `plan.ps1 -Intent <意图> -UseLlm`。模型名称由部署方显式指定，无自动选择/替换；API key 只进入 Authorization header。可选 `CAD_HARNESS_PLANNER_ENDPOINT` 为 HTTPS Responses URL，默认 `https://api.openai.com/v1/responses`；可选 `CAD_HARNESS_PLANNER_MAX_OUTPUT_TOKENS` 默认 8192（256–32768），`CAD_HARNESS_PLANNER_TIMEOUT_SECONDS` 默认 120（1–300）。响应限制 512 KiB；拒绝 refusal、未完成响应、工具调用、多段计划和无效结构，支持取消。实际 API 可用性需要部署方自己的凭据和模型权限，本次只做 mock HTTP 验证。
+
+已有模型编辑规划使用 `-ModelProgram <当前创建程序.json> -State <对应CADState.json>`；此模式生成 M6 可接收的编辑 IR，不会连接/重开 Part。应用内可使用：
+
+```csharp
+var runtime = SolidWorksPlanningRuntime.ForConstruction();
+// 已有 live session：SolidWorksPlanningRuntime.ForEdit(context, committedState)
+var planner = new CadPlanner(runtime, source);
+var result = await planner.PlanAsync(userIntent, cancellationToken);
+// 只有 result.Succeeded 才将 result.Program 交给对应 M5/M6 执行入口。
+```
+
+M7 **47/47 纯测试通过**，中文创建/编辑及 unsupported CLI 流程通过。全解决方案现有 **13 个项目**构建 0 警告、0 错误。创建 **0**、关闭 **0** Parts；未激活 SOLIDWORKS COM，未做可选原生 smoke，未发出真实付费模型请求，也未重跑 M0–M6 功能/原生测试。fixture 结果 `ModelCalls=0`；LLM 适配器记录每次规划的一次模型请求尝试，mock 测试不代表真实模型调用。
+
+验收与文件清单见 `docs/milestone-7-verification.md`。模型输出的意图完整性及通用自然语言准确率尚未经真实 frontier 模型评估，不能把 fixture/mock 结果当作泛化或性能结论。运行时有限几何边界沿用 M5/M6，圆角/倒角最终可行性由原生执行判定。
+
+## Milestone 8 — 可选 Bounded Judge
+
+`IBoundedJudge` 位于纯 State 库，通过 `SemanticEntityBinder` 构造器可选注入。`BindAsync` 先执行既有类型、健康状态、几何、所有权、依赖筛选及确定性排名；0 个候选返回 unresolved，1 个或唯一 preferred-owner 匹配直接绑定，两种情况均不调用 Judge。仅余下 **2–8 个完整合法候选** 时最多调用一次 Judge，超过预算拒绝调用，要求调用方缩小确定性约束。
+
+```csharp
+// optionalJudge 可为 null；也可注入实现 IBoundedJudge 的语义选择适配器。
+var binder = new SemanticEntityBinder(optionalJudge, TimeSpan.FromSeconds(10));
+var result = await binder.BindAsync(state, inputContract, bindingQuery, intent, cancellationToken);
+// result.Binding 为绑定结果；JudgeStatus、JudgeCalls、Rationale 为判断来源。
+// 同步 binder.Bind(...) 始终只执行确定性绑定。
+```
+
+Judge 接收不可变的小候选投影（语义 ID/类型、所属特征 ID/类型、已有几何证据、输入名/角色和有界意图），不接收完整 CADState、原生持久引用、文件路径、IR OperationRegistry 或 CAD 执行回调。响应只能 Select 一个精确候选 ID 并说明理由，或 Abstain；请求 ID、枚举、ID 成员资格、决策形状及 UTF-8 字节上限均严格检查。无 Judge、弃权、非法选择、失败、取消、超时或等待期间状态变化都保留 `BINDING_AMBIGUOUS`，不选首项或自动重试。
+
+```powershell
+.\scripts\test-milestone8.ps1
+.\scripts\build.ps1
+```
+
+M8 专属 **48/48 纯/mock 测试通过**，14 项目 Release 构建 **0 警告、0 错误**。M8 纯测试无需安装 SOLIDWORKS 或读取 COM 注册表。创建/关闭 **0/0 Parts**，真实 Judge 请求 **0**。按 PRD 保留可选 Jev 适配器后续接入，没有配置 Jev 依赖。原生读取/验证保持既有确定性路径，异步结果使用前由调用方在 COM 所属 STA 核对当前文档/revision 和原生引用。详见 `docs/milestone-8-verification.md` 与 `artifacts/milestone8/pure-result.json`。
+
+**Milestone 9 NOT IMPLEMENTED**。

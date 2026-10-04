@@ -7,6 +7,13 @@ namespace CadHarness.State;
 
 public static class RelationParameterEditor
 {
+    public static IReadOnlyDictionary<EditableParameter, string> SupportedFields { get; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<EditableParameter, string>(new Dictionary<EditableParameter, string>
+        {
+            [EditableParameter.PatternSpacing] = "spacingMm", [EditableParameter.PatternCount] = "count",
+            [EditableParameter.PatternSpacingX] = "spacingXMm", [EditableParameter.PatternSpacingY] = "spacingYMm",
+            [EditableParameter.PatternCountX] = "countX", [EditableParameter.PatternCountY] = "countY"
+        });
     public static CadProgram Apply(CadProgram current, OperationNode edit)
     {
         var check = new ProgramValidator().Validate(new("0.2", new[] { edit }, Array.Empty<DesignRelation>()));
@@ -16,13 +23,8 @@ public static class RelationParameterEditor
         var owner = current.Operations.SingleOrDefault(o => o.SemanticId == target) ?? throw new StateException("BINDING_UNRESOLVED", "No managed owner for edit target.");
         var parameter = edit.Parameter<ParameterNameParameter>("parameter").Value;
         if (!EditableParameters.IsOwnedBy(parameter, owner)) throw new StateException(FailureCodes.PreconditionFailed, "The target does not own this parameter.");
-        var field = parameter switch
-        {
-            EditableParameter.PatternSpacing => "spacingMm", EditableParameter.PatternCount => "count",
-            EditableParameter.PatternSpacingX => "spacingXMm", EditableParameter.PatternSpacingY => "spacingYMm",
-            EditableParameter.PatternCountX => "countX", EditableParameter.PatternCountY => "countY",
-            _ => throw new StateException(FailureCodes.OperationUnsupported, "M5 edits are limited to linear/rectangular pattern counts and spacings required by relation verification.")
-        };
+        if (!SupportedFields.TryGetValue(parameter, out var field))
+            throw new StateException(FailureCodes.OperationUnsupported, "Edits are limited to executable linear/rectangular pattern scalar parameters.");
         var parameters = new Dictionary<string, OperationParameter>(owner.Parameters) { [field] = edit.Parameter<EditValueParameter>("value").Value };
         var changed = owner with { Parameters = parameters };
         return current with { Operations = current.Operations.Select(o => o.SemanticId == target ? changed : o).ToArray() };
