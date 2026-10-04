@@ -1,0 +1,10 @@
+{
+  "programVersion": "0.2",
+  "operations": [
+    {"id":"base","kind":"create_extrude","semanticId":"plate","profile":{"kind":"centered_rectangle","widthMm":80,"heightMm":50},"depthMm":10},
+    {"id":"hole","kind":"create_through_hole","semanticId":"mounting_seed","host":"plate.top_face","diameterMm":8,"placement":{"xMm":-20,"yMm":0}},
+    {"id":"pattern","kind":"create_linear_pattern","semanticId":"mounting_holes","seed":"mounting_seed","direction":{"semanticId":"plate.direction_x","type":"linear_edge"},"count":2,"spacingMm":40},
+    {"id":"round","kind":"apply_fillet","semanticId":"outer_round","edges":["plate.outer_edge_1","plate.outer_edge_2","plate.outer_edge_3","plate.outer_edge_4"],"radiusMm":3}
+  ],
+  "relations": []
+}

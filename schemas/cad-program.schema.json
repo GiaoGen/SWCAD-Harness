@@ -1,0 +1,1319 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "programVersion",
+    "operations"
+  ],
+  "properties": {
+    "programVersion": {
+      "type": "string",
+      "const": "0.2"
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/create_extrude"
+          },
+          {
+            "$ref": "#/$defs/create_through_hole"
+          },
+          {
+            "$ref": "#/$defs/create_blind_hole"
+          },
+          {
+            "$ref": "#/$defs/create_linear_pattern"
+          },
+          {
+            "$ref": "#/$defs/create_rectangular_pattern"
+          },
+          {
+            "$ref": "#/$defs/create_circular_pattern"
+          },
+          {
+            "$ref": "#/$defs/apply_fillet"
+          },
+          {
+            "$ref": "#/$defs/apply_chamfer"
+          },
+          {
+            "$ref": "#/$defs/edit_parameter"
+          }
+        ]
+      }
+    },
+    "relations": {
+      "type": "array",
+      "maxItems": 48,
+      "items": {
+        "$ref": "#/$defs/relation"
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:cad-program:0.2",
+  "title": "CAD Harness v0.2 typed operation program",
+  "$defs": {
+    "centered_rectangle_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "widthMm",
+        "heightMm"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "centered_rectangle"
+        },
+        "widthMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "heightMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "circle_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "diameterMm"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "circle"
+        },
+        "diameterMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "xMm",
+        "yMm"
+      ],
+      "properties": {
+        "xMm": {
+          "type": "number"
+        },
+        "yMm": {
+          "type": "number"
+        }
+      }
+    },
+    "create_extrude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "profile",
+        "depthMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_extrude"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/centered_rectangle_profile"
+            },
+            {
+              "$ref": "#/$defs/circle_profile"
+            }
+          ]
+        },
+        "depthMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "create_through_hole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "host",
+        "diameterMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_through_hole"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "host": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "planar_face",
+                    "reference_plane"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "diameterMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "placement": {
+          "$ref": "#/$defs/placement"
+        }
+      }
+    },
+    "create_blind_hole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "host",
+        "diameterMm",
+        "depthMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_blind_hole"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "host": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "planar_face",
+                    "reference_plane"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "diameterMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "depthMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "placement": {
+          "$ref": "#/$defs/placement"
+        }
+      }
+    },
+    "create_linear_pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "seed",
+        "count",
+        "spacingMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_linear_pattern"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "seed": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "feature_ref"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "direction": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "linear_edge",
+                    "reference_axis"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "spacingMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "create_rectangular_pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "seed",
+        "countX",
+        "countY"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_rectangular_pattern"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "seed": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "feature_ref"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "directionX": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "linear_edge",
+                    "reference_axis"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "directionY": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "linear_edge",
+                    "reference_axis"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "countX": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "countY": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spacingXMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "spacingYMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "not": {
+        "properties": {
+          "countX": {
+            "const": 1
+          },
+          "countY": {
+            "const": 1
+          }
+        }
+      }
+    },
+    "create_circular_pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "seed",
+        "axis",
+        "count"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "create_circular_pattern"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "seed": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "feature_ref"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "axis": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "cylindrical_face",
+                    "circular_edge",
+                    "reference_axis"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "angleDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 360
+        }
+      }
+    },
+    "apply_fillet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "edges",
+        "radiusMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "apply_fillet"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "semanticId",
+                  "type"
+                ],
+                "properties": {
+                  "semanticId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "linear_edge",
+                      "circular_edge"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "radiusMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "apply_chamfer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "semanticId",
+        "edges",
+        "distanceMm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "apply_chamfer"
+        },
+        "semanticId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "semanticId",
+                  "type"
+                ],
+                "properties": {
+                  "semanticId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "linear_edge",
+                      "circular_edge"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "distanceMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "edit_parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "target",
+        "parameter",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "edit_parameter"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "semanticId",
+                "type"
+              ],
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "feature_ref"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "parameter": {
+          "type": "string",
+          "enum": [
+            "profile_width",
+            "profile_height",
+            "profile_diameter",
+            "extrusion_depth",
+            "hole_diameter",
+            "blind_hole_depth",
+            "pattern_spacing",
+            "pattern_spacing_x",
+            "pattern_spacing_y",
+            "pattern_count",
+            "pattern_count_x",
+            "pattern_count_y",
+            "pattern_angle",
+            "fillet_radius",
+            "chamfer_distance"
+          ]
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "profile_width"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "profile_height"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "profile_diameter"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "extrusion_depth"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "hole_diameter"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "blind_hole_depth"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_spacing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_spacing_x"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_spacing_y"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_count"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_count_x"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_count_y"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "pattern_angle"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 360
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "fillet_radius"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "const": "chamfer_distance"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "relation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "hosted_on"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pattern_seed"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "centered_about"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "symmetric_about_axis"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "equal_spacing"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "through_all"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "aligned_with"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "subject",
+            "reference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "depends_on"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            },
+            "reference": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?!.*(?:^|[._])(?:i(?:face|edge|body|feature|modeldoc|sldworks|sketch|surface|component|assemblydoc|partdoc|modeldocextension)\\d*|sldworks|solidworks|com|marshal|dispatch|select(?:byid)?\\d*|feature(?:extrusion|cut|linearpattern|circularpattern|fillet|chamfer)\\d*|(?:boss_)?extrude\\d\u002B|cut_extrude\\d\u002B|d\\d\u002B)(?:$|[._]))[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

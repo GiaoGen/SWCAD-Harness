@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/CadHarness.State/CadHarness.State.csproj" />
+    <ProjectReference Include="../../src/CadHarness.SolidWorks/CadHarness.SolidWorks.csproj" />
+    <Compile Include="../CadHarness.SolidWorks.Tests/NativeResourceGuard.cs" Link="NativeResourceGuard.cs" />
+    <Compile Include="../CadHarness.SolidWorks.Tests/NativeTestBudget.cs" Link="NativeTestBudget.cs" />
+    <Compile Include="../CadHarness.SolidWorks.Tests/TestPartScope.cs" Link="TestPartScope.cs" />
+  </ItemGroup>
+  <Import Project="../../scripts/solidworks-interop.props" />
+</Project>

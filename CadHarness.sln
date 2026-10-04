@@ -1,0 +1,58 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Ir", "src\CadHarness.Ir\CadHarness.Ir.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49701}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.SolidWorks", "src\CadHarness.SolidWorks\CadHarness.SolidWorks.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49702}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Ir.Tests", "tests\CadHarness.Ir.Tests\CadHarness.Ir.Tests.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49703}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.SolidWorks.Tests", "tests\CadHarness.SolidWorks.Tests\CadHarness.SolidWorks.Tests.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49704}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Bootstrap.Tests", "tests\CadHarness.Bootstrap.Tests\CadHarness.Bootstrap.Tests.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49705}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.State", "src\CadHarness.State\CadHarness.State.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49706}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.State.Tests", "tests\CadHarness.State.Tests\CadHarness.State.Tests.csproj", "{5F743242-586D-4B66-9F90-8C8A67E49707}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{45DB5A0D-6551-4BBB-8D33-577931F4C629}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Features.Tests", "tests\CadHarness.Features.Tests\CadHarness.Features.Tests.csproj", "{C104C31F-96AC-4737-989B-874D0C566C8B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Relations.Tests", "tests\CadHarness.Relations.Tests\CadHarness.Relations.Tests.csproj", "{22E26023-BD66-4793-B770-3A406BCC1412}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Transactions.Tests", "tests\CadHarness.Transactions.Tests\CadHarness.Transactions.Tests.csproj", "{A0B3B7DC-D5A8-4578-9157-5A95772A64BD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5F743242-586D-4B66-9F90-8C8A67E49701}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49701}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49702}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49702}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49703}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49703}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49704}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49704}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49705}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49705}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49706}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49706}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49707}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F743242-586D-4B66-9F90-8C8A67E49707}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C104C31F-96AC-4737-989B-874D0C566C8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C104C31F-96AC-4737-989B-874D0C566C8B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22E26023-BD66-4793-B770-3A406BCC1412}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22E26023-BD66-4793-B770-3A406BCC1412}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A0B3B7DC-D5A8-4578-9157-5A95772A64BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A0B3B7DC-D5A8-4578-9157-5A95772A64BD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{C104C31F-96AC-4737-989B-874D0C566C8B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+		{22E26023-BD66-4793-B770-3A406BCC1412} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+		{A0B3B7DC-D5A8-4578-9157-5A95772A64BD} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+	EndGlobalSection
+EndGlobal

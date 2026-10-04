@@ -1,0 +1,22 @@
+{
+  "programVersion":"0.2",
+  "operations":[
+    {"id":"base","kind":"create_extrude","semanticId":"plate","profile":{"kind":"centered_rectangle","widthMm":100,"heightMm":60},"depthMm":8},
+    {"id":"linear_seed_op","kind":"create_through_hole","semanticId":"linear_seed","host":"plate.top_face","diameterMm":8},
+    {"id":"linear_pattern_op","kind":"create_linear_pattern","semanticId":"linear_holes","seed":"linear_seed","count":2,"spacingMm":40},
+    {"id":"hole","kind":"create_through_hole","semanticId":"hole_seed","host":"plate.top_face","diameterMm":6},
+    {"id":"pattern","kind":"create_rectangular_pattern","semanticId":"holes","seed":"hole_seed","countX":2,"countY":2,"spacingXMm":60,"spacingYMm":30}
+  ],
+  "relations":[
+    {"kind":"hosted_on","subject":"linear_seed","reference":"plate.top_face"},
+    {"kind":"pattern_seed","subject":"linear_holes","reference":"linear_seed"},
+    {"kind":"equal_spacing","subject":"linear_holes","reference":"linear_seed"},
+    {"kind":"centered_about","subject":"linear_holes","reference":"plate.local_frame"},
+    {"kind":"symmetric_about_axis","subject":"linear_holes","reference":"plate.axis_y"},
+    {"kind":"hosted_on","subject":"hole_seed","reference":"plate.top_face"},
+    {"kind":"pattern_seed","subject":"holes","reference":"hole_seed"},
+    {"kind":"equal_spacing","subject":"holes","reference":"hole_seed"},
+    {"kind":"centered_about","subject":"holes","reference":"plate.local_frame"},
+    {"kind":"symmetric_about_axis","subject":"holes","reference":"plate.axis_x"}
+  ]
+}

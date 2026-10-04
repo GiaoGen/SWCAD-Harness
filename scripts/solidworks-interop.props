@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <SolidWorksInteropDir Condition="'$(SolidWorksInteropDir)' == ''">$(SOLIDWORKS_INTEROP_DIR)</SolidWorksInteropDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="SolidWorks.Interop.sldworks">
+      <HintPath>$(SolidWorksInteropDir)/SolidWorks.Interop.sldworks.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SolidWorks.Interop.swconst">
+      <HintPath>$(SolidWorksInteropDir)/SolidWorks.Interop.swconst.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="CheckSolidWorksInterop" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(SolidWorksInteropDir)/SolidWorks.Interop.sldworks.dll') Or !Exists('$(SolidWorksInteropDir)/SolidWorks.Interop.swconst.dll')"
+           Text="Set SolidWorksInteropDir or SOLIDWORKS_INTEROP_DIR to the installed SOLIDWORKS API redist directory." />
+  </Target>
+</Project>

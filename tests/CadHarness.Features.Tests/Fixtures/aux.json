@@ -1,0 +1,9 @@
+{
+  "programVersion": "0.2",
+  "operations": [
+    {"id":"base","kind":"create_extrude","semanticId":"block","profile":{"kind":"centered_rectangle","widthMm":70,"heightMm":45},"depthMm":12},
+    {"id":"hole","kind":"create_blind_hole","semanticId":"pocket","host":"block.top_face","diameterMm":10,"depthMm":5,"placement":{"xMm":7,"yMm":-4}},
+    {"id":"bevel","kind":"apply_chamfer","semanticId":"corner_bevel","edges":["block.outer_edge_1","block.outer_edge_2","block.outer_edge_3","block.outer_edge_4"],"distanceMm":2}
+  ],
+  "relations": []
+}

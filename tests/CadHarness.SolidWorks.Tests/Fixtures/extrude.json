@@ -1,0 +1,17 @@
+{
+  "programVersion": "0.2",
+  "operations": [
+    {
+      "id": "base",
+      "kind": "create_extrude",
+      "profile": {
+        "kind": "centered_rectangle",
+        "widthMm": 80,
+        "heightMm": 50
+      },
+      "depthMm": 10,
+      "semanticId": "base_plate"
+    }
+  ],
+  "relations": []
+}
