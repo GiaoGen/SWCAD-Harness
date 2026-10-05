@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–8 + M9A/M9B/M9C
+# CAD Harness v0.2 — Milestones 0–8 + M9A–M9D
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -12,9 +12,9 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
 
-最新扩展 **M9C COMPLETE**：整 CadProgram construction 复用编辑事务协调器，原生修改后失败可恢复执行前模型、绑定/session metadata 和 CADState；预检拒绝不开始 mutation。M9A/M9B 的参数 mutation、Circle/CircularPattern 与能力投影继续保留。完整 M9 泛化评估及后续扩展未执行。以下各里程碑章节保留各阶段验收时的范围；当前能力见末节。
+最新评估 **M9D 已执行，验收 BLOCKED**：G2（含厚度/孔径编辑）、G4、held-out 和 G6/G7 预期负例通过；G1/G3/G5 的阵列后边处理组合在方向引用读回阶段失败并回滚，标为 BLOCKED_CAPABILITY。生产代码变更为0，10个独立Part全部关闭；矩阵和能力投影缺口见 [M9D verification](docs/milestone-9d-verification.md)。M9A/M9B/M9C COMPLETE 能力保留。以下各里程碑章节记录其当时验收范围。
 
-Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。Milestone 9 未实现。
+Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并在该阶段通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。当前 M9D 结果以最新矩阵为准，不以旧阶段创建结果替代完整事务验收。
 
 包含 `CadProgram`、`OperationNode`、`OperationKind`、`OperationInput`、`OperationParameter`、`OperationContract`、`OperationRegistry`、语义类型/角色、严格 JSON 解析与序列化、程序验证，以及从契约生成的 JSON Schema。
 
@@ -372,4 +372,15 @@ var result = new RelationBackend().Create(context, constructionProgram, store);
 
 M9C **22/22 专属纯/mock 测试通过**；**17 项目 Release 编译零警告、零错误**。原生验证包含空 Part 和已有模型的真实 impossible fillet 修改后失败回滚、修改前 pattern/placement/已消耗边拒绝、后置条件失败、真实 atomic commit failure、正常创建/追加提交，以及 R1 圆角原模型上的追加失败回滚。九个失败场景的模型、磁盘 state 和 live session state 均未改变；恢复前后两组 JSON 的 SHA256 分别相同。
 
-原生创建/关闭 **2/2 Parts**，并发最大1，原活动状态均恢复，预算 **2/2**；未运行 M9 generalization suite、旧里程碑测试或性能 benchmark。详细记录见 [M9C verification](docs/milestone-9c-verification.md)，证据在 `artifacts/milestone9c/`。后续扩展与完整 M9 泛化评估未执行。
+M9C阶段原生创建/关闭 **2/2 Parts**，并发最大1，原活动状态均恢复，预算 **2/2**；该阶段未运行 M9 generalization suite、旧里程碑测试或性能 benchmark。详细记录见 [M9C verification](docs/milestone-9c-verification.md)，证据在 `artifacts/milestone9c/`。
+
+## M9D — Generalization Evaluation
+
+评估已执行，验收 **BLOCKED**：G2、G4、held-out及G6/G7预期负例通过，G1/G3/G5为BLOCKED_CAPABILITY。三个阻塞案例的原生子操作成功，最终pattern direction读回失败，整体事务已回滚。未修改生产代码或添加preset；10个独立Part全部关闭，原活动状态恢复，最大并发1。确定性fixture经生产Planner验证，不代表外部LLM文本规划成功率。
+
+```powershell
+.\scripts\test-milestone9d.ps1 -Mode Prepare -InteropDir 'D:\Solidworks Crops\SOLIDWORKS\api\redist'
+.\scripts\test-milestone9d.ps1 -Mode Matrix -InteropDir 'D:\Solidworks Crops\SOLIDWORKS\api\redist'
+```
+
+Live每案仅运行一次，10/10预算已用完，入口拒绝自动重复案例。完整matrix、held-out定义、native rollback和capability projection缺口见 [M9D verification](docs/milestone-9d-verification.md)；机器证据位于 `artifacts/milestone9d/generalization-matrix.json`。
