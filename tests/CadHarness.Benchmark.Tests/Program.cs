@@ -46,7 +46,7 @@ internal static class Program
         Check(!File.Exists(Path.Combine(output, "manifest.json")), "M10 already frozen. Do not replace evidence or expand budget.");
         Check(File.ReadAllText(Path.Combine(root, "docs/milestone-9-final-acceptance.md")).Contains("M10 prerequisite satisfied=true", StringComparison.Ordinal), "M9 prerequisite missing.");
         Check(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CAD_HARNESS_LLM_API_KEY")), "Authorized model key missing.");
-        var manifest = new BenchmarkManifest("c6c3ef6", "deepseek-chat", "https://api.deepseek.com/chat/completions", 0, 8192, 120,
+        var manifest = new BenchmarkManifest("c6c3ef6", "deepseek-chat", CadHarness.Planning.DeepSeekPlanSource.Endpoint.ToString(), 0, 8192, 120,
             CadHarness.Planning.StepwisePlanner.MaximumDecisions, BenchmarkData.MaximumParts, 1, 1, 5, BenchmarkData.Tasks(), BenchmarkData.Schedule(), Sources(root), Binaries(root), Historical(root));
         Write(Path.Combine(output, "manifest.json"), manifest); File.WriteAllText(Path.Combine(output, "manifest.sha256"), Hash(Path.Combine(output, "manifest.json")));
         Console.WriteLine("M10 frozen: 2 tasks x 2 modes x (1 warm-up + 5 measured) = 24 Parts maximum. No native calls."); return 0;

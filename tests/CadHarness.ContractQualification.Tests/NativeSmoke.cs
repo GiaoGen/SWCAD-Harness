@@ -35,25 +35,32 @@ internal sealed class RunReport
     public string? CleanupError { get; set; }
     public bool FrozenFilesUnchanged { get; set; }
 }
-internal static class NativeBenchmark
+internal static class NativeSmoke
 {
+    private static bool PriorPassed(string root, RunSlot slot)
+    {
+        var path = Path.Combine(Program.Output(root), slot.Id, "result.json");
+        if (!File.Exists(path)) return false;
+        var report = JsonSerializer.Deserialize<RunReport>(File.ReadAllText(path))!;
+        return report.Success && report.EditableModelSuccess && report.PartsCreated == 1 && report.PartsClosed == 1 && report.OriginalActiveRestored && report.CleanupError is null;
+    }
     private static void Require(bool success, string? code, string message)
     { if (!success) throw new StateException(code ?? "BENCHMARK_RUN_FAILED", message); }
     internal static int Run(string root, string id, string? template)
     {
-        Program.VerifyFreeze(root);
-        var schedule = BenchmarkData.Schedule(); var slot = schedule.Single(s => s.Id == id);
+        Program.VerifyGate(root);
+        var schedule = Program.SmokeSchedule(); var slot = schedule.Single(s => s.Id == id);
         var output = Path.Combine(Program.Output(root), slot.Id); Directory.CreateDirectory(output);
-        Program.Check(!File.Exists(Path.Combine(output, "attempt.json")), "Run already attempted; benchmark does not retry.");
-        Program.Check(schedule.Take(slot.Order - 1).All(s => File.Exists(Path.Combine(Program.Output(root), s.Id, "result.json"))), "Frozen counterbalanced order must be followed.");
+        Program.Check(!File.Exists(Path.Combine(output, "attempt.json")), "Run already attempted; M10A does not retry.");
+        Program.Check(schedule.Take(slot.Order - 1).All(s => PriorPassed(root, s)), "Frozen counterbalanced order must be followed.");
         var key = Environment.GetEnvironmentVariable("CAD_HARNESS_LLM_API_KEY");
         Program.Check(!string.IsNullOrWhiteSpace(key), "CAD_HARNESS_LLM_API_KEY is required before any native mutation.");
         using var client = OpenAiPlanSource.CreateClient();
         var source = new RecordedSource(new DeepSeekPlanSource(client, "deepseek-chat", key!, 8192, 120), output);
         var task = BenchmarkData.Tasks().Single(t => t.Name == slot.Task);
         Program.Write(Path.Combine(output, "attempt.json"), new { Slot = slot, StartedUtc = DateTimeOffset.UtcNow });
-        NativeResourceGuard.TestTitlePrefix = "CADHarnessM10Test_";
-        using var budget = new NativeTestBudget(Path.Combine(Program.Output(root), "native-budget.json"), "M10", BenchmarkData.MaximumParts);
+        NativeResourceGuard.TestTitlePrefix = "CADHarnessM10ATest_";
+        using var budget = new NativeTestBudget(Path.Combine(Program.Output(root), "native-budget.json"), "M10A", 4);
         var report = new RunReport { Slot = slot }; var wall = Stopwatch.StartNew();
         using var metrics = ExecutionTelemetry.Start();
         SolidWorksConnection? connection = null; TestPartScope? part = null;
@@ -140,6 +147,6 @@ internal static class NativeBenchmark
         Program.Write(Path.Combine(output, "result.json"), report);
         Console.WriteLine(JsonSerializer.Serialize(new { slot.Id, report.Success, report.EditableModelSuccess, report.LlmCalls, report.InputTokens, report.OutputTokens,
             report.Timing, report.TotalWallMs, report.FailureCode, report.Message, report.PartsCreated, report.PartsClosed, report.CleanupError }));
-        return report.CleanupError is null && report.ResourcesAfter is { GdiCount: not null } after && NativeResourceGuard.Evaluate(after.Responding, after.GdiCount, after.OpenTestOwnedParts) is null ? 0 : 2;
+        return report.Success && report.EditableModelSuccess && report.OriginalActiveRestored && report.CleanupError is null && report.ResourcesAfter is { GdiCount: not null } after && NativeResourceGuard.Evaluate(after.Responding, after.GdiCount, after.OpenTestOwnedParts) is null ? 0 : 2;
     }
 }
