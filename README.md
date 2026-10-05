@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–8 + M9A–M9F
+# CAD Harness v0.2 — Milestones 0–8 + M9A–M9G
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -12,7 +12,7 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
 
-最新验收 **M9 COMPLETE / M9F COMPLETE**：使用M9E的真实ReferenceAxis PatternDirection，G1/G3/G5原尺寸与四步组合全部通过Planner/capability、native execution、strict readback、final geometry、CADState/persistent refs和rollback安全检查。M9F生产代码变更0，独立创建/关闭3/3 Parts；G5测试浮点比较误报经零-Part原始证据复核通过，raw report保留。M9D/M9E原始证据未改写，其余M9案例沿用历史PASS证据。满足M10 prerequisite，未执行M10。详见 [M9 final acceptance](docs/milestone-9-final-acceptance.md)、[M9F verification](docs/milestone-9f-verification.md)。以下章节记录各阶段当时范围。
+最新验收 **M9 COMPLETE / M9G COMPLETE**：当前ReferenceAxis runtime下，G2创建、thickness 8→10、四孔Ø6→Ø8，以及Held-out创建、三通孔Ø7→Ø9/盲孔保持全部通过strict readback、geometry/state/refs和edit/construction rollback；ReferenceAxis count=1025的G6_Pattern在mutation前拒绝，0 Part。G1/G3/G5沿用同一production源码下的M9F，所有受Linear/Rectangular PatternDirection契约变化影响的supported/negative cases均已有当前runtime证据。M9G生产代码变更0，独立创建/关闭2/2 Parts，M9D/M9E/M9F原证据未改写。满足M10 prerequisite，可直接进入M10，未执行M10。详见 [M9 final acceptance](docs/milestone-9-final-acceptance.md)、[M9G verification](docs/milestone-9g-verification.md)。以下章节记录各阶段当时范围。
 
 Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并在该阶段通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。当前M9状态以新的final acceptance为准；历史M9D的BLOCKED矩阵保留作为修复前记录。
 
