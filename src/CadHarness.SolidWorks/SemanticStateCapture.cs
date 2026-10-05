@@ -77,7 +77,9 @@ public sealed partial class SolidWorksExecutionContext
             SemanticGeometry? geometry = output.LogicalGeometry;
             if (resolved.NativeObject is not null && geometry is null)
             {
-                if (output.Type == SemanticType.PlanarFace && resolved.NativeObject is IFace2 face && face.GetSurface() is ISurface surface && surface.IsPlane())
+                if (output.Type == SemanticType.ReferenceAxis && resolved.NativeObject is IFeature datum && datum.GetSpecificFeature2() is IRefAxis)
+                    geometry = NativePatternDirection.Read(datum, id.EndsWith("_x", StringComparison.Ordinal) ? 0 : 1);
+                else if (output.Type == SemanticType.PlanarFace && resolved.NativeObject is IFace2 face && face.GetSurface() is ISurface surface && surface.IsPlane())
                 {
                     var p = NativeGeometry.Doubles(surface.PlaneParams);
                     geometry = new(new(p[3] * 1000, p[4] * 1000, p[5] * 1000), new(p[0], p[1], p[2]));

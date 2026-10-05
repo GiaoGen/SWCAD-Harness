@@ -78,8 +78,15 @@ internal static class RelationNativeReadback
                 {
                     var seeds = NativeTopology.Objects<object>(data.PatternFeatureArray);
                     Check(seeds.Count == 1 && PersistentReferenceAdapter.Capture(context, seeds[0]) == seedReference, "Native pattern_seed reference differs.");
-                    Check(data.D1Axis is not null && PersistentReferenceAdapter.Capture(context, data.D1Axis) == xReference && data.D1ReverseDirection == flipX, "Native first pattern direction differs.");
-                    if (d.Y > 1) Check(data.D2Axis is not null && PersistentReferenceAdapter.Capture(context, data.D2Axis) == yReference && data.D2ReverseDirection == flipY, "Native second pattern direction differs.");
+                    var actualX = data.D1Axis is null ? null : PersistentReferenceAdapter.Capture(context, NativePatternDirection.CanonicalFeature(context, data.D1Axis));
+                    Check(actualX == xReference && data.D1ReverseDirection == flipX,
+                        $"Native first pattern direction differs. axisReferenceMatches={actualX == xReference}; reverseMatches={data.D1ReverseDirection == flipX}; actualReverse={data.D1ReverseDirection}; expectedReverse={flipX}; actualReference={actualX?.Base64}; expectedReference={xReference.Base64}");
+                    if (d.Y > 1)
+                    {
+                        var actualY = data.D2Axis is null ? null : PersistentReferenceAdapter.Capture(context, NativePatternDirection.CanonicalFeature(context, data.D2Axis));
+                        Check(actualY == yReference && data.D2ReverseDirection == flipY,
+                            $"Native second pattern direction differs. axisReferenceMatches={actualY == yReference}; reverseMatches={data.D2ReverseDirection == flipY}; actualReverse={data.D2ReverseDirection}; expectedReverse={flipY}");
+                    }
                     Check(NativeTopology.Objects<object>(data.SkippedItemArray).Count == 0, "Equal-spacing layout has skipped instances.");
                 }
                 finally { data.ReleaseSelectionAccess(); }
@@ -112,11 +119,13 @@ public sealed partial class SolidWorksExecutionContext
 {
     internal IFace2 DirectFace(string id) => PersistentReferenceAdapter.Resolve<IFace2>(this, outputs[id].Reference).NativeObject ??
         throw new NativeOperationException("STALE_REFERENCE", "Host reference is stale.");
-    internal IEdge DirectDirection(OperationNode operation, int axis)
+    internal IFeature DirectDirection(OperationNode operation, int axis)
     {
         var reference = LinearPatternHandler.Direction(this, operation, axis);
-        if (!outputs.TryGetValue(reference.SemanticId, out var output) || output.Type != SemanticType.LinearEdge)
+        if (!outputs.TryGetValue(reference.SemanticId, out var output) || output.Type != SemanticType.ReferenceAxis)
             throw new NativeOperationException("BINDING_UNRESOLVED", "No native direction output.");
-        return PersistentReferenceAdapter.Resolve<IEdge>(this, output.Reference).NativeObject ?? throw new NativeOperationException("STALE_REFERENCE", "Direction reference is stale.");
+        var datum = PersistentReferenceAdapter.Resolve<IFeature>(this, output.Reference).NativeObject ?? throw new NativeOperationException("STALE_REFERENCE", "Direction reference is stale.");
+        NativePatternDirection.Read(datum, reference.SemanticId.EndsWith("_x", StringComparison.Ordinal) ? 0 : 1);
+        return datum;
     }
 }

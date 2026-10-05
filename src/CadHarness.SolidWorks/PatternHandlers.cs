@@ -26,8 +26,8 @@ public abstract class LinearPatternHandler : NativeFeatureHandler
         if ((long)dimensions.X * dimensions.Y > FeaturePreflight.MaximumPatternInstances)
             return FeaturePreflight.Failure("Pattern exceeds the finite backend limit of 1024 instances.");
         foreach (var input in operation.Inputs)
-            if (input.Name != "seed" && input.References[0].Type != SemanticType.LinearEdge)
-                return FeaturePreflight.Failure("M4 pattern directions use constructed linear edges.");
+            if (input.Name != "seed" && input.References[0].Type != SemanticType.ReferenceAxis)
+                return FeaturePreflight.Failure("Pattern directions require stable local-frame datum axes.");
         return check;
     }
     protected override void ValidateInputs(SolidWorksExecutionContext context, OperationNode operation)
@@ -35,11 +35,11 @@ public abstract class LinearPatternHandler : NativeFeatureHandler
         context.Resolve<IFeature>(operation.Input("seed")!.References[0]);
         var d = Dimensions(operation);
         var x = Direction(context, operation, d.Swap ? 1 : 0);
-        Axis(context.Resolve<IEdge>(x));
+        Axis(context.Resolve<IFeature>(x));
         if (d.Y > 1)
         {
             var y = Direction(context, operation, 1);
-            var a = Axis(context.Resolve<IEdge>(x)); var b = Axis(context.Resolve<IEdge>(y));
+            var a = Axis(context.Resolve<IFeature>(x)); var b = Axis(context.Resolve<IFeature>(y));
             if (Math.Abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) > 1e-8)
                 throw new NativeOperationException(FailureCodes.PreconditionFailed, "Rectangular pattern directions must be perpendicular.");
         }
@@ -48,13 +48,13 @@ public abstract class LinearPatternHandler : NativeFeatureHandler
     {
         var doc = context.Document;
         var d = Dimensions(operation);
-        var x = context.Resolve<IEdge>(Direction(context, operation, d.Swap ? 1 : 0));
+        var x = context.Resolve<IFeature>(Direction(context, operation, d.Swap ? 1 : 0));
         var flipX = IsReversed(Axis(x));
         NativeTopology.Select(doc, x, false, 1);
         var flipY = false;
         if (d.Y > 1)
         {
-            var y = context.Resolve<IEdge>(Direction(context, operation, 1));
+            var y = context.Resolve<IFeature>(Direction(context, operation, 1));
             flipY = IsReversed(Axis(y));
             NativeTopology.Select(doc, y, true, 2);
         }
@@ -83,8 +83,9 @@ public abstract class LinearPatternHandler : NativeFeatureHandler
     internal static SemanticReference Direction(SolidWorksExecutionContext context, OperationNode operation, int axis)
     {
         var name = operation.Kind == OperationKind.CreateLinearPattern ? "direction" : axis == 0 ? "directionX" : "directionY";
-        return operation.Input(name)?.References[0] ?? new(context.ConstructionRoot + (axis == 0 ? ".direction_x" : ".direction_y"), SemanticType.LinearEdge);
+        return operation.Input(name)?.References[0] ?? new(context.ConstructionRoot + (axis == 0 ? ".direction_x" : ".direction_y"), SemanticType.ReferenceAxis);
     }
+    internal static double[] Axis(IFeature datum) => NativePatternDirection.Vector(datum);
     internal static double[] Axis(IEdge edge)
     {
         if (edge.GetCurve() is not ICurve curve || !curve.IsLine())
@@ -94,8 +95,8 @@ public abstract class LinearPatternHandler : NativeFeatureHandler
         if (!double.IsFinite(length) || length < 1e-12) throw new NativeOperationException(FailureCodes.PreconditionFailed, "Pattern direction is degenerate.");
         return new[] { p[3] / length, p[4] / length, p[5] / length };
     }
-    // A constructed edge defines its line; orient it toward the positive dominant
-    // component of the extrusion frame, independently of native edge enumeration.
+    // Orient the native datum line toward the positive local-frame component.
+    // Native datum parameter ordering can point either way; the design cannot.
     internal static bool IsReversed(double[] direction)
     {
         var axis = Math.Abs(direction[0]) >= Math.Abs(direction[1]) ? 0 : 1;

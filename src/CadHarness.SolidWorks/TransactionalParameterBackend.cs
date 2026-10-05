@@ -174,7 +174,8 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         CheckIntegrity(); RelationNativeReadback.Verify(context, expected, scope);
         var observed = context.CaptureState(state, expected, scope, revision);
         if (observed.Features.Any(f => f.ReferenceHealth != ReferenceHealth.Healthy) ||
-            observed.Entities.Where(e => scope.Entities.Contains(e.SemanticId)).Any(e => e.ReferenceHealth != ReferenceHealth.Healthy))
+            observed.Entities.Where(e => scope.Entities.Contains(e.SemanticId)).Any(e => e.ReferenceHealth != ReferenceHealth.Healthy &&
+                !ConstructionReferenceHealth.IntentionalConsumption(expected, e)))
             throw new StateException("STALE_REFERENCE", "Validated native references must remain healthy.");
         foreach (var id in scope.Parameters)
         {

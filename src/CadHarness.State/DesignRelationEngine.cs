@@ -61,8 +61,8 @@ public sealed class RelationContext
         var owner = ReferenceOwner(hole.Input("host")!.References[0].SemanticId, SemanticType.PlanarFace);
         Vector3 Direction(string slot, int axis)
         {
-            var reference = pattern.Input(slot)?.References[0] ?? new(owner + (axis == 0 ? ".direction_x" : ".direction_y"), SemanticType.LinearEdge);
-            if (ReferenceOwner(reference.SemanticId, SemanticType.LinearEdge) != owner)
+            var reference = pattern.Input(slot)?.References[0] ?? new(owner + (axis == 0 ? ".direction_x" : ".direction_y"), SemanticType.ReferenceAxis);
+            if (reference.Type != SemanticType.ReferenceAxis || ReferenceOwner(reference.SemanticId, SemanticType.ReferenceAxis) != owner)
                 Fail("RELATION_VIOLATED", "Pattern direction must share the host local frame.");
             if (reference.SemanticId == owner + ".direction_x") return new(1, 0, 0);
             if (reference.SemanticId == owner + ".direction_y") return new(0, 1, 0);

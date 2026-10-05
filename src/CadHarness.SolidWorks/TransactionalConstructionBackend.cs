@@ -85,10 +85,8 @@ public sealed class TransactionalConstructionBackend : IRequestMutationBackend<C
         // Edge treatments can intentionally consume their host's linear edges.
         // Preserve those outputs with their actual health, so Binder/Planner
         // cannot reuse them. Feature/body/frame/host references must stay usable.
-        var treatedOwners = prepared.After.Program.Operations.Where(o => o.Kind is OperationKind.ApplyFillet or OperationKind.ApplyChamfer)
-            .SelectMany(o => o.Input("edges")!.References).Select(r => context.Owner(r.SemanticId)).ToHashSet(StringComparer.Ordinal);
         if (observed.Features.Any(f => f.ReferenceHealth != ReferenceHealth.Healthy) || observed.Entities.Any(e => e.ReferenceHealth != ReferenceHealth.Healthy &&
-            !(e.Type == SemanticType.LinearEdge && treatedOwners.Contains(e.OwnerFeatureSemanticId))))
+            !ConstructionReferenceHealth.IntentionalConsumption(prepared.After.Program, e)))
             throw new StateException("STALE_REFERENCE", "Final construction state has unhealthy native references.");
         return observed;
     }

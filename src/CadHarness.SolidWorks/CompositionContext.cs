@@ -69,8 +69,6 @@ public sealed partial class SolidWorksExecutionContext
         var origin = new Point3(0, 0, 0);
         var xAxis = new Vector3(1, 0, 0); var yAxis = new Vector3(0, 1, 0); var zAxis = new Vector3(0, 0, 1);
         Register(id + ".local_frame", SemanticType.LocalFrame, id, feature, new(origin, Frame: new(origin, xAxis, yAxis, zAxis)));
-        Register(id + ".axis_x", SemanticType.ReferenceAxis, id, feature, new(origin, xAxis));
-        Register(id + ".axis_y", SemanticType.ReferenceAxis, id, feature, new(origin, yAxis));
         var profile = operation.Parameter<ProfileParameter>("profile").Value;
         var depth = Millimeters.ToMeters(operation.Parameter<LengthParameter>("depthMm").Millimeters);
         var faces = NativeTopology.Faces(body);
@@ -80,6 +78,8 @@ public sealed partial class SolidWorksExecutionContext
         Register(id + ".bottom_face", SemanticType.PlanarFace, id, bottom);
         if (profile is CircleProfile circle)
         {
+            Register(id + ".axis_x", SemanticType.ReferenceAxis, id, feature, new(origin, xAxis));
+            Register(id + ".axis_y", SemanticType.ReferenceAxis, id, feature, new(origin, yAxis));
             Register(id + ".rotational_reference", SemanticType.CylindricalFace, id,
                 NativeTopology.Unique(faces.Where(f => f.GetSurface() is ISurface s && s.IsCylinder() &&
                     NativeTopology.Near(NativeGeometry.Doubles(s.CylinderParams)[6], circle.DiameterMm / 2000)), "extrude outer cylindrical face"));
@@ -95,10 +95,12 @@ public sealed partial class SolidWorksExecutionContext
             foreach (var y in new[] { -h, h })
                 Register(id + ".outer_edge_" + index++, SemanticType.LinearEdge, id,
                     NativeTopology.Unique(edges.Where(e => NativeTopology.IsVerticalAt(e, x, y)), "extrude corner edge"));
-        Register(id + ".direction_x", SemanticType.LinearEdge, id,
-            NativeTopology.Unique(edges.Where(e => NativeTopology.IsDirectionEdge(e, 0, -h, depth)), "extrude X direction"));
-        Register(id + ".direction_y", SemanticType.LinearEdge, id,
-            NativeTopology.Unique(edges.Where(e => NativeTopology.IsDirectionEdge(e, 1, -w, depth)), "extrude Y direction"));
+        var datumX = NativePatternDirection.Create(Document, 0);
+        var datumY = NativePatternDirection.Create(Document, 1);
+        Register(id + ".direction_x", SemanticType.ReferenceAxis, id, datumX);
+        Register(id + ".direction_y", SemanticType.ReferenceAxis, id, datumY);
+        Register(id + ".axis_x", SemanticType.ReferenceAxis, id, datumX);
+        Register(id + ".axis_y", SemanticType.ReferenceAxis, id, datumY);
     }
     internal void RegisterHole(OperationNode operation, IFeature feature)
     {

@@ -97,7 +97,7 @@ public static class SemanticTypes
     {
         SemanticRole.HostSurface => Array.AsReadOnly(new[] { SemanticType.PlanarFace, SemanticType.ReferencePlane }),
         SemanticRole.PatternSeed => Array.AsReadOnly(new[] { SemanticType.FeatureRef }),
-        SemanticRole.PatternDirection => Array.AsReadOnly(new[] { SemanticType.LinearEdge, SemanticType.ReferenceAxis }),
+        SemanticRole.PatternDirection => Array.AsReadOnly(new[] { SemanticType.ReferenceAxis, SemanticType.LinearEdge }),
         SemanticRole.FilletEdgeSet or SemanticRole.ChamferEdgeSet =>
             Array.AsReadOnly(new[] { SemanticType.LinearEdge, SemanticType.CircularEdge }),
         SemanticRole.RotationalReference => Array.AsReadOnly(new[]

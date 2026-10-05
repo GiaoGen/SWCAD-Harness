@@ -78,6 +78,8 @@ public sealed class CreateExtrudeHandler : IOperationBackendHandler
             if (!rebuilt || error != 0 || warning || document.Extension.NeedsRebuild2 != 0)
                 return new(false, "FEATURE_REBUILD_FAILED", "Extrusion rebuild or native feature status failed.", operation.SemanticId, true, false);
             context.RegisterExtrude(operation, context.CreatedFeature);
+            if (!document.ForceRebuild3(false) || document.Extension.NeedsRebuild2 != 0)
+                throw new NativeOperationException("FEATURE_REBUILD_FAILED", "Extrusion datum outputs could not be rebuilt.");
             return new(true, null, "Native extrusion created and rebuilt.", operation.SemanticId, true, true);
         }
         catch (NativeOperationException error)

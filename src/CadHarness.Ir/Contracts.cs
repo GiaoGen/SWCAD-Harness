@@ -79,7 +79,7 @@ public sealed class OperationRegistry
             FeatureOutputs(new(".body", SemanticType.BodyRef), new(".top_face", SemanticType.PlanarFace),
                 new(".bottom_face", SemanticType.PlanarFace), new(".local_frame", SemanticType.LocalFrame),
                 new(".axis_x", SemanticType.ReferenceAxis), new(".axis_y", SemanticType.ReferenceAxis),
-                new(".direction_x", SemanticType.LinearEdge), new(".direction_y", SemanticType.LinearEdge),
+                new(".direction_x", SemanticType.ReferenceAxis), new(".direction_y", SemanticType.ReferenceAxis),
                 new(".outer_edge_1", SemanticType.LinearEdge), new(".outer_edge_2", SemanticType.LinearEdge),
                 new(".outer_edge_3", SemanticType.LinearEdge), new(".outer_edge_4", SemanticType.LinearEdge),
                 new(".rotational_reference", SemanticType.CylindricalFace)));

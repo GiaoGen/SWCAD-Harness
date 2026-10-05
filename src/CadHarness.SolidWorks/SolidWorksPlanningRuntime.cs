@@ -74,7 +74,7 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             }
         }
         var contracts = edits.Count == 0 ? Array.Empty<OperationContract>() : new[] { OperationRegistry.Default.Get(OperationKind.EditParameter) };
-        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m9c", PlanningMode.EditModel, contracts,
+        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m9e", PlanningMode.EditModel, contracts,
             Array.Empty<ProfileKind>(), Array.Empty<RelationKind>(), edits, new[]
             {
                 "One edit_parameter per plan, using a healthy bound target/parameter pair in this snapshot.",
@@ -97,19 +97,20 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             {
                 AcceptedTypes = Array.AsReadOnly(input.Name == "host" ? new[] { SemanticType.PlanarFace } :
                     input.Name == "seed" ? new[] { SemanticType.FeatureRef } :
-                    input.Name == "axis" ? new[] { SemanticType.CylindricalFace } : new[] { SemanticType.LinearEdge })
+                    input.Name == "axis" ? new[] { SemanticType.CylindricalFace } :
+                    input.Role == SemanticRole.PatternDirection ? new[] { SemanticType.ReferenceAxis } : new[] { SemanticType.LinearEdge })
             }).ToArray();
             var parameters = contract.Parameters.Select(p => p.Kind == ParameterKind.Count ? p with { Maximum = FeaturePreflight.MaximumPatternInstances } : p).ToArray();
             return contract with { Inputs = Array.AsReadOnly(inputs), Parameters = Array.AsReadOnly(parameters) };
         }).ToArray();
-        return new("solidworks-v0.2-m9c", PlanningMode.CreateModel, contracts, CreateExtrudeHandler.SupportedProfiles,
+        return new("solidworks-v0.2-m9e", PlanningMode.CreateModel, contracts, CreateExtrudeHandler.SupportedProfiles,
             new DesignRelationEngine().SupportedKinds, Array.Empty<ParameterEditCapability>(), new[]
             {
                 "Exactly one initial centered_rectangle or circle extrusion on the XY plane in an empty Part.",
                 "All inputs must reference prior outputs within this construction program; no external model references.",
                 "Holes use the initial extrusion's top_face; hole placement is local XY in millimeters, strictly inside the profile, with no touching/overlapping holes (<=4096 per host).",
                 "Blind-hole depth is strictly less than the extrusion depth.",
-                "Linear/rectangular pattern directions use rectangle direction_x/direction_y; circle profiles do not produce linear edges.",
+                "Linear/rectangular pattern directions use rectangle direction_x/direction_y ReferenceAxis outputs backed by native origin-plane datum axes. BREP edges are not pattern directions. Circle profiles do not produce these outputs.",
                 "Circular patterns use hole feature seeds and the circle host's rotational_reference (a real native outer CylindricalFace); logical axis_x/axis_y are not circular pattern axes.",
                 "Circular patterns rotate about local +Z. angleDeg defaults to 360; equal steps are angle/count for full revolutions, angle/(count-1) for partial spans.",
                 "Linear/rectangular repeated directions require explicit spacing greater than hole diameter. Every pattern is limited to 1024 total instances.",
