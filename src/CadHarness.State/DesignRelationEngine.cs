@@ -31,7 +31,7 @@ public sealed class RelationContext
     {
         operations = program.Operations.Where(o => o.SemanticId is not null).ToDictionary(o => o.SemanticId!, StringComparer.Ordinal);
         foreach (var operation in operations.Values)
-            foreach (var output in OperationRegistry.Default.Get(operation.Kind).Outputs)
+            foreach (var output in ProfileOutputs.For(operation))
                 symbols.Add(operation.SemanticId! + output.Suffix, (output.Type, operation.SemanticId!));
         foreach (var operation in operations.Values)
             foreach (var input in operation.Inputs.SelectMany(i => i.References))
@@ -127,29 +127,31 @@ public sealed class RelationContext
     }
     private void ValidateHostBounds(CadProgram program)
     {
+        var occupied = new Dictionary<string, List<(Point2D Position, double Radius)>>();
         foreach (var hole in program.Operations.Where(o => o.Kind is OperationKind.CreateThroughHole or OperationKind.CreateBlindHole))
         {
             var owner = ReferenceOwner(hole.Input("host")!.References[0].SemanticId, SemanticType.PlanarFace);
             var root = Operation(owner);
-            if (root.Kind != OperationKind.CreateExtrude || root.Parameter<ProfileParameter>("profile").Value is not CenteredRectangleProfile rectangle ||
+            if (root.Kind != OperationKind.CreateExtrude ||
                 hole.Input("host")!.References[0].SemanticId != owner + ".top_face")
-                Fail("OPERATION_UNSUPPORTED", "M5 hole constraints require the initial rectangle top face.");
-            rectangle = (CenteredRectangleProfile)root.Parameter<ProfileParameter>("profile").Value;
+                Fail("OPERATION_UNSUPPORTED", "Hole constraints require the initial extrusion top face.");
+            var profile = root.Parameter<ProfileParameter>("profile").Value;
             var p = Placement(hole.SemanticId!); var radius = hole.Parameter<LengthParameter>("diameterMm").Millimeters / 2;
-            void Inside(double x, double y)
+            if (!occupied.TryGetValue(owner, out var instances)) occupied[owner] = instances = new();
+            void Inside(Point2D position)
             {
-                if (!double.IsFinite(x) || !double.IsFinite(y) || Math.Abs(x) + radius >= rectangle.WidthMm / 2 || Math.Abs(y) + radius >= rectangle.HeightMm / 2)
+                if (!double.IsFinite(position.XMm) || !double.IsFinite(position.YMm) || !ProfileGeometry.ContainsHole(profile, position, radius))
                     Fail(FailureCodes.PreconditionFailed, "Relation-resolved hole layout exceeds the host profile.");
+                if (instances.Count >= 4096) Fail(FailureCodes.PreconditionFailed, "Host exceeds 4096 hole instances.");
+                foreach (var other in instances)
+                    if (Math.Sqrt(Math.Pow(other.Position.XMm - position.XMm, 2) + Math.Pow(other.Position.YMm - position.YMm, 2)) <= radius + other.Radius)
+                        Fail(FailureCodes.PreconditionFailed, "Managed hole instances must not intersect or touch.");
+                instances.Add((position, radius));
             }
-            Inside(p.XMm, p.YMm);
+            Inside(p);
             foreach (var pattern in program.Operations.Where(o => o.Input("seed")?.References[0].SemanticId == hole.SemanticId))
             {
-                var layout = Layout(pattern.SemanticId!);
-                if ((layout.Count1 > 1 && layout.Spacing1Mm <= radius * 2) || (layout.Count2 > 1 && layout.Spacing2Mm <= radius * 2))
-                    Fail(FailureCodes.PreconditionFailed, "Pattern hole instances must not intersect.");
-                for (var i = 0; i < layout.Count1; i++) for (var j = 0; j < layout.Count2; j++)
-                    Inside(p.XMm + i * layout.Spacing1Mm * layout.Direction1.X + j * layout.Spacing2Mm * layout.Direction2.X,
-                        p.YMm + i * layout.Spacing1Mm * layout.Direction1.Y + j * layout.Spacing2Mm * layout.Direction2.Y);
+                foreach (var position in PatternGeometry.Positions(program, pattern).Skip(1)) Inside(position);
             }
         }
     }
@@ -201,10 +203,11 @@ public sealed class PatternSeedHandler : IDesignRelationHandler
     public RelationKind Kind => RelationKind.PatternSeed;
     public void Apply(RelationContext context, DesignRelation relation)
     {
-        var layout = context.Layout(relation.Subject);
-        if (layout.Seed != relation.Reference) RelationContext.Fail("RELATION_VIOLATED", "pattern_seed must agree with the pattern's typed seed input.");
+        var pattern = context.Operation(relation.Subject);
+        var seed = pattern.Kind == OperationKind.CreateCircularPattern ? PatternGeometry.Seed(pattern) : context.Layout(relation.Subject).Seed;
+        if (seed != relation.Reference) RelationContext.Fail("RELATION_VIOLATED", "pattern_seed must agree with the pattern's typed seed input.");
         context.ReferenceOwner(relation.Reference!, SemanticType.FeatureRef);
-        context.AddDependency(layout.Seed, relation.Subject, DependencyKind.RelationConstraint);
+        context.AddDependency(seed, relation.Subject, DependencyKind.RelationConstraint);
     }
 }
 public sealed class EqualSpacingHandler : IDesignRelationHandler
@@ -212,10 +215,11 @@ public sealed class EqualSpacingHandler : IDesignRelationHandler
     public RelationKind Kind => RelationKind.EqualSpacing;
     public void Apply(RelationContext context, DesignRelation relation)
     {
-        var layout = context.Layout(relation.Subject);
-        if (relation.Reference != layout.Seed) RelationContext.Fail("RELATION_VIOLATED", "equal_spacing references the pattern's seed and asserts uniform native steps in each repeated direction.");
+        var pattern = context.Operation(relation.Subject);
+        var seed = pattern.Kind == OperationKind.CreateCircularPattern ? PatternGeometry.Seed(pattern) : context.Layout(relation.Subject).Seed;
+        if (relation.Reference != seed) RelationContext.Fail("RELATION_VIOLATED", "equal_spacing references the pattern's seed and asserts uniform native steps in each repeated direction.");
         context.ReferenceOwner(relation.Reference!, SemanticType.FeatureRef);
-        context.AddDependency(layout.Seed, relation.Subject, DependencyKind.RelationConstraint);
+        context.AddDependency(seed, relation.Subject, DependencyKind.RelationConstraint);
     }
 }
 

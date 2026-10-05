@@ -9,6 +9,8 @@ public sealed record ChangeSet(IReadOnlyList<string> ChangedFeatures, IReadOnlyL
     IReadOnlyList<string> PossiblyInvalidatedEntities)
 {
     public static ChangeSet Empty { get; } = new(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+    public IReadOnlyList<string> CreatedFeatures { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> CreatedEntities { get; init; } = Array.Empty<string>();
 }
 
 public sealed record DirtySet(IReadOnlyList<string> Features, IReadOnlyList<string> Parameters,
@@ -19,16 +21,17 @@ public sealed record DirtySet(IReadOnlyList<string> Features, IReadOnlyList<stri
         var featureIds = state.Features.Select(f => f.SemanticId).ToHashSet(StringComparer.Ordinal);
         var entityIds = state.Entities.Select(e => e.SemanticId).ToHashSet(StringComparer.Ordinal);
         var parameterIds = state.Parameters.Select(p => p.SemanticId).ToHashSet(StringComparer.Ordinal);
-        if (changes.ChangedFeatures.Any(f => !featureIds.Contains(f)) ||
+        if (changes.ChangedFeatures.Any(f => !featureIds.Contains(f) && !changes.CreatedFeatures.Contains(f)) ||
             changes.ChangedParameters.Any(p => !parameterIds.Contains(p)) ||
-            changes.PossiblyInvalidatedEntities.Any(e => !entityIds.Contains(e)))
-            throw new StateException("CHANGESET_INVALID", "ChangeSet must name existing managed identities.");
+            changes.PossiblyInvalidatedEntities.Any(e => !entityIds.Contains(e) && !changes.CreatedEntities.Contains(e)) ||
+            changes.CreatedFeatures.Any(f => !changes.ChangedFeatures.Contains(f)))
+            throw new StateException("CHANGESET_INVALID", "ChangeSet must name existing or explicitly introduced managed identities.");
         var relations = StateRelationData.Relations(state);
         var roots = changes.ChangedFeatures.Concat(state.Bindings.Where(b => changes.ChangedParameters.Contains(b.ParameterSemanticId)).Select(b => b.OwnerFeatureSemanticId))
             .Concat(relations.Where(r => r.Reference is not null && changes.PossiblyInvalidatedEntities.Contains(r.Reference)).Select(r => r.Subject));
         var features = new DependencyGraph(StateRelationData.Dependencies(state)).AffectedBy(roots);
         var owned = state.Entities.Where(e => features.Contains(e.OwnerFeatureSemanticId)).Select(e => e.SemanticId);
-        var invalidated = owned.Concat(changes.PossiblyInvalidatedEntities).ToHashSet(StringComparer.Ordinal);
+        var invalidated = owned.Concat(changes.PossiblyInvalidatedEntities).Concat(changes.CreatedEntities).ToHashSet(StringComparer.Ordinal);
         var dirtyRelations = relations.Where(r => features.Contains(r.Subject) || (r.Reference is not null && invalidated.Contains(r.Reference))).ToArray();
         // Referenced hosts/frames/directions are read dependencies; reading them
         // does not make another layout on the same host dirty.

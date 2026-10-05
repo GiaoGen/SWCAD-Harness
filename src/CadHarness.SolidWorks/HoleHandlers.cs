@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using CadHarness.Ir;
+using CadHarness.State;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 
@@ -34,10 +35,10 @@ public abstract class HoleHandler : NativeFeatureHandler
         var thickness = root.Parameter<LengthParameter>("depthMm").Millimeters;
         if (!NativeTopology.IsZPlane(face, thickness / 1000))
             throw new NativeOperationException(FailureCodes.PreconditionFailed, "Hole host is no longer the supported XY top face.");
-        var rectangle = (CenteredRectangleProfile)root.Parameter<ProfileParameter>("profile").Value;
+        var profile = root.Parameter<ProfileParameter>("profile").Value;
         var placement = Placement(operation);
         var radius = operation.Parameter<LengthParameter>("diameterMm").Millimeters / 2;
-        if (Math.Abs(placement.XMm) + radius >= rectangle.WidthMm / 2 || Math.Abs(placement.YMm) + radius >= rectangle.HeightMm / 2)
+        if (!ProfileGeometry.ContainsHole(profile, placement, radius))
             throw new NativeOperationException(FailureCodes.PreconditionFailed, "Hole circle must lie strictly inside the host profile.");
         if (Kind == OperationKind.CreateBlindHole && operation.Parameter<LengthParameter>("depthMm").Millimeters >= thickness)
             throw new NativeOperationException(FailureCodes.PreconditionFailed, "Blind-hole depth must be less than the host thickness.");

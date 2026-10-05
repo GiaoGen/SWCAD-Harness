@@ -11,7 +11,7 @@ namespace CadHarness.SolidWorks;
 public sealed class CreateExtrudeHandler : IOperationBackendHandler
 {
     public static System.Collections.Generic.IReadOnlyList<ProfileKind> SupportedProfiles { get; } =
-        Array.AsReadOnly(new[] { ProfileKind.CenteredRectangle });
+        Array.AsReadOnly(new[] { ProfileKind.CenteredRectangle, ProfileKind.Circle });
     public OperationKind Kind => OperationKind.CreateExtrude;
 
     public PreflightResult Preflight(OperationNode operation)
@@ -22,13 +22,16 @@ public sealed class CreateExtrudeHandler : IOperationBackendHandler
             var issue = validation.Issues[0];
             return new(false, issue.Code, issue.Path + ": " + issue.Message);
         }
-        if (operation.Kind != Kind || !SupportedProfiles.Contains(operation.Parameter<ProfileParameter>("profile").Value.Kind) ||
-            operation.Parameter<ProfileParameter>("profile").Value is not CenteredRectangleProfile rectangle)
-            return new(false, FailureCodes.OperationUnsupported, "Milestone 2 supports only create_extrude with a centered rectangle profile.");
+        if (operation.Kind != Kind || !SupportedProfiles.Contains(operation.Parameter<ProfileParameter>("profile").Value.Kind))
+            return new(false, FailureCodes.OperationUnsupported, "Extrusion requires a supported centered profile.");
         try
         {
-            Millimeters.ToMeters(rectangle.WidthMm);
-            Millimeters.ToMeters(rectangle.HeightMm);
+            switch (operation.Parameter<ProfileParameter>("profile").Value)
+            {
+                case CenteredRectangleProfile rectangle:
+                    Millimeters.ToMeters(rectangle.WidthMm); Millimeters.ToMeters(rectangle.HeightMm); break;
+                case CircleProfile circle: Millimeters.ToMeters(circle.DiameterMm); break;
+            }
             Millimeters.ToMeters(operation.Parameter<LengthParameter>("depthMm").Millimeters);
         }
         catch (ArgumentOutOfRangeException)
@@ -48,12 +51,16 @@ public sealed class CreateExtrudeHandler : IOperationBackendHandler
             if (document.GetType() != (int)swDocumentTypes_e.swDocPART || context.CreatedFeature is not null ||
                 NativeGeometry.SolidBodies(document).Count != 0 || document.GetActiveSketch2() is not null)
                 return new(false, FailureCodes.PreconditionFailed, "An empty Part outside sketch editing is required.", operation.SemanticId, false, false);
-            var profile = (CenteredRectangleProfile)operation.Parameter<ProfileParameter>("profile").Value;
-            var width = Millimeters.ToMeters(profile.WidthMm);
-            var height = Millimeters.ToMeters(profile.HeightMm);
+            var profile = operation.Parameter<ProfileParameter>("profile").Value;
             var depth = Millimeters.ToMeters(operation.Parameter<LengthParameter>("depthMm").Millimeters);
             mutationStarted = true;
-            var sketch = CenteredRectangleProfileBackend.Create(document, width, height);
+            var sketch = profile switch
+            {
+                CenteredRectangleProfile rectangle => CenteredRectangleProfileBackend.Create(document,
+                    Millimeters.ToMeters(rectangle.WidthMm), Millimeters.ToMeters(rectangle.HeightMm)),
+                CircleProfile circle => CircleProfileBackend.Create(document, Millimeters.ToMeters(circle.DiameterMm) / 2),
+                _ => throw new NativeOperationException(FailureCodes.OperationUnsupported, "Unsupported extrusion profile.")
+            };
             if (!sketch.Select2(false, 0)) throw new NativeOperationException("GEOMETRY_INVALID", "Cannot select the created profile.");
             var manager = (IFeatureManager)document.FeatureManager;
             var native = manager.FeatureExtrusion3(

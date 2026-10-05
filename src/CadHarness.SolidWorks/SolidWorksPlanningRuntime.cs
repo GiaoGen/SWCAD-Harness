@@ -61,6 +61,9 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
                 var bindings = state.Bindings.Where(b => b.OwnerFeatureSemanticId == operation.SemanticId && b.Parameter == parameter).ToArray();
                 if (!mutations.TryGet(operation, parameter, out _) || bindings.Length != 1) continue;
                 var affected = new DependencyGraph(StateRelationData.Dependencies(state)).AffectedBy(new[] { operation.SemanticId! });
+                var requiredInputs = normalized.Operations.Where(o => affected.Contains(o.SemanticId!)).SelectMany(o => o.Inputs)
+                    .SelectMany(i => i.References).Select(r => r.SemanticId).Distinct().ToArray();
+                if (requiredInputs.Any(id => state.Entities.Count(e => e.SemanticId == id && e.ReferenceHealth == ReferenceHealth.Healthy) != 1)) continue;
                 if (state.Features.Where(f => affected.Contains(f.SemanticId)).Any(f => f.ReferenceHealth != ReferenceHealth.Healthy) ||
                     state.Entities.Where(e => affected.Contains(e.OwnerFeatureSemanticId)).Any(e => e.ReferenceHealth != ReferenceHealth.Healthy)) continue;
                 var scalar = mutations.Expected(operation, parameter);
@@ -71,7 +74,7 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
             }
         }
         var contracts = edits.Count == 0 ? Array.Empty<OperationContract>() : new[] { OperationRegistry.Default.Get(OperationKind.EditParameter) };
-        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m9a", PlanningMode.EditModel, contracts,
+        var catalog = new RuntimeCapabilityCatalog("solidworks-v0.2-m9c", PlanningMode.EditModel, contracts,
             Array.Empty<ProfileKind>(), Array.Empty<RelationKind>(), edits, new[]
             {
                 "One edit_parameter per plan, using a healthy bound target/parameter pair in this snapshot.",
@@ -86,31 +89,35 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
     private static RuntimeCapabilityCatalog ConstructionCatalog()
     {
         // Enumerate actual registered native handlers first; IR only supplies
-        // contracts for that selected set. Circular pattern is never selected.
+        // contracts for that selected set. Output projection follows the profile.
         var contracts = new FeatureBackendRegistry().SupportedKinds.Select(kind =>
         {
             var contract = OperationRegistry.Default.Get(kind);
             var inputs = contract.Inputs.Select(input => input with
             {
                 AcceptedTypes = Array.AsReadOnly(input.Name == "host" ? new[] { SemanticType.PlanarFace } :
-                    input.Name == "seed" ? new[] { SemanticType.FeatureRef } : new[] { SemanticType.LinearEdge })
+                    input.Name == "seed" ? new[] { SemanticType.FeatureRef } :
+                    input.Name == "axis" ? new[] { SemanticType.CylindricalFace } : new[] { SemanticType.LinearEdge })
             }).ToArray();
             var parameters = contract.Parameters.Select(p => p.Kind == ParameterKind.Count ? p with { Maximum = FeaturePreflight.MaximumPatternInstances } : p).ToArray();
             return contract with { Inputs = Array.AsReadOnly(inputs), Parameters = Array.AsReadOnly(parameters) };
         }).ToArray();
-        return new("solidworks-v0.2-m7", PlanningMode.CreateModel, contracts, CreateExtrudeHandler.SupportedProfiles,
+        return new("solidworks-v0.2-m9c", PlanningMode.CreateModel, contracts, CreateExtrudeHandler.SupportedProfiles,
             new DesignRelationEngine().SupportedKinds, Array.Empty<ParameterEditCapability>(), new[]
             {
-                "Exactly one initial centered_rectangle extrusion on the XY plane in an empty Part.",
+                "Exactly one initial centered_rectangle or circle extrusion on the XY plane in an empty Part.",
                 "All inputs must reference prior outputs within this construction program; no external model references.",
-                "Holes use the initial extrusion's top_face; hole placement is local XY in millimeters, strictly inside the rectangle.",
+                "Holes use the initial extrusion's top_face; hole placement is local XY in millimeters, strictly inside the profile, with no touching/overlapping holes (<=4096 per host).",
                 "Blind-hole depth is strictly less than the extrusion depth.",
-                "Pattern seeds are through/blind holes; directions are the host's local direction_x/direction_y outputs.",
-                "Every repeated direction requires explicit spacing greater than hole diameter; total instances <= 1024.",
-                "Centering uses the host local_frame; symmetry uses its axis_x or axis_y.",
+                "Linear/rectangular pattern directions use rectangle direction_x/direction_y; circle profiles do not produce linear edges.",
+                "Circular patterns use hole feature seeds and the circle host's rotational_reference (a real native outer CylindricalFace); logical axis_x/axis_y are not circular pattern axes.",
+                "Circular patterns rotate about local +Z. angleDeg defaults to 360; equal steps are angle/count for full revolutions, angle/(count-1) for partial spans.",
+                "Linear/rectangular repeated directions require explicit spacing greater than hole diameter. Every pattern is limited to 1024 total instances.",
+                "centered_about and symmetric_about_axis apply to linear/rectangular patterns. Circular patterns support hosted_on, pattern_seed and equal_spacing, with explicit seed placement.",
                 "Edge treatments use currently healthy constructed linear edges and require native geometry feasibility.",
-                "Construction cannot contain parameter edits. No unimplemented IR vocabulary is available."
-            });
+                "Construction cannot contain parameter edits. No unimplemented IR vocabulary is available.",
+                "Construction programs use full final validation and transaction rollback before publishing state. Consumed edges cannot be rebound."
+            }, CreateExtrudeHandler.SupportedProfiles.Select(p => new ProfileOutputCapability(p, ProfileOutputs.For(p))));
     }
 
     public ProgramValidationResult Preflight(CadProgram program)

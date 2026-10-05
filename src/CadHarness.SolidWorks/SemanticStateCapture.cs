@@ -38,7 +38,10 @@ public sealed partial class SolidWorksExecutionContext
             switch (operation.Kind)
             {
                 case OperationKind.CreateExtrude:
-                    Parameter(EditableParameter.ExtrusionDepth, () => ((IExtrudeFeatureData2)resolved.NativeObject.GetDefinition()).GetDepth(true) * 1000); break;
+                    Parameter(EditableParameter.ExtrusionDepth, () => ((IExtrudeFeatureData2)resolved.NativeObject.GetDefinition()).GetDepth(true) * 1000);
+                    if (operation.Parameter<ProfileParameter>("profile").Value is CircleProfile)
+                        Parameter(EditableParameter.ProfileDiameter, () => NativeGeometry.Doubles(((ISurface)DirectFace(id + ".rotational_reference").GetSurface()).CylinderParams)[6] * 2000);
+                    break;
                 case OperationKind.CreateThroughHole:
                 case OperationKind.CreateBlindHole:
                     Parameter(EditableParameter.HoleDiameter, () => NativeHoleProfile.Read(this, id).RadiusMeters * 2000);
@@ -57,6 +60,11 @@ public sealed partial class SolidWorksExecutionContext
                         if (!d.Swap && d.SpacingX > 0) Parameter(EditableParameter.PatternSpacingX, () => data.D1Spacing * 1000);
                         if ((d.Swap ? d.SpacingX : d.SpacingY) > 0) Parameter(EditableParameter.PatternSpacingY, () => (d.Swap ? data.D1Spacing : data.D2Spacing) * 1000);
                     }
+                    break;
+                case OperationKind.CreateCircularPattern:
+                    var circular = (ICircularPatternFeatureData)resolved.NativeObject.GetDefinition();
+                    Parameter(EditableParameter.PatternCount, () => circular.TotalInstances);
+                    Parameter(EditableParameter.PatternAngle, () => circular.Spacing * 180 / Math.PI);
                     break;
                 case OperationKind.ApplyFillet: Parameter(EditableParameter.FilletRadius, () => ((ISimpleFilletFeatureData2)resolved.NativeObject.GetDefinition()).DefaultRadius * 1000); break;
                 case OperationKind.ApplyChamfer: Parameter(EditableParameter.ChamferDistance, () => ((IChamferFeatureData2)resolved.NativeObject.GetDefinition()).GetEdgeChamferDistance(0) * 1000); break;

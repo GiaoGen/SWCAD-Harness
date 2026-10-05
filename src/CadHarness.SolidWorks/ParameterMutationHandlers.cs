@@ -145,21 +145,14 @@ internal static class NativeHoleInstanceVerifier
     internal static void Verify(SolidWorksExecutionContext context, CadProgram expected, IEnumerable<string> affected)
     {
         var dirty = affected.ToHashSet(StringComparer.Ordinal);
-        foreach (var hole in expected.Operations.Where(o => o.Kind == OperationKind.CreateThroughHole && dirty.Contains(o.SemanticId!)))
+        foreach (var hole in expected.Operations.Where(o => (o.Kind is OperationKind.CreateThroughHole or OperationKind.CreateBlindHole) && dirty.Contains(o.SemanticId!)))
         {
             var seedPosition = hole.Parameter<PlacementParameter>("placement").Value;
             var positions = new List<Point2D> { seedPosition };
             var produced = new List<IFace2>(NativeTopology.FeatureFaces(context.DirectFeature(hole.SemanticId!)));
             foreach (var pattern in expected.Operations.Where(o => o.Input("seed")?.References[0].SemanticId == hole.SemanticId))
             {
-                var d = LinearPatternHandler.Dimensions(pattern);
-                var x = LinearPatternHandler.Axis(context.DirectDirection(pattern, d.Swap ? 1 : 0));
-                if (LinearPatternHandler.IsReversed(x)) for (var k = 0; k < 3; k++) x[k] = -x[k];
-                var y = d.Y > 1 ? LinearPatternHandler.Axis(context.DirectDirection(pattern, 1)) : new double[3];
-                if (LinearPatternHandler.IsReversed(y)) for (var k = 0; k < 3; k++) y[k] = -y[k];
-                for (var i = 0; i < d.X; i++) for (var j = 0; j < d.Y; j++)
-                    if (i != 0 || j != 0) positions.Add(new(seedPosition.XMm + i * d.SpacingX * x[0] + j * d.SpacingY * y[0],
-                        seedPosition.YMm + i * d.SpacingX * x[1] + j * d.SpacingY * y[1]));
+                positions.AddRange(PatternGeometry.Positions(expected, pattern).Skip(1));
                 produced.AddRange(NativeTopology.FeatureFaces(context.DirectFeature(pattern.SemanticId!)));
             }
             var walls = produced.Where(f => f.GetSurface() is ISurface s && s.IsCylinder())
@@ -181,7 +174,8 @@ internal static class NativeHoleInstanceVerifier
                 var levels = NativeTopology.Objects<IEdge>(face.GetEdges()).Select(e => (ICurve)e.GetCurve())
                     .Where(c => c.IsCircle()).Select(c => NativeGeometry.Doubles(c.CircleParams)[2] * 1000).Distinct().OrderBy(z => z).ToArray();
                 if (levels.Length != 2) throw new StateException("PARAMETER_NOT_APPLIED", "Through-hole instance lacks two circular boundaries.");
-                RelationNativeReadback.Near(levels[0], 0, "Native hole lower boundary differs.");
+                var bottom = hole.Kind == OperationKind.CreateBlindHole ? depth - hole.Parameter<LengthParameter>("depthMm").Millimeters : 0;
+                RelationNativeReadback.Near(levels[0], bottom, "Native hole lower boundary differs.");
                 RelationNativeReadback.Near(levels[1], depth, "Native hole upper boundary differs after depth mutation.");
             }
         }

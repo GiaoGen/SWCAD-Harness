@@ -78,13 +78,17 @@ public sealed class ParameterMutationRegistry
     {
         [EditableParameter.ExtrusionDepth] = "depthMm", [EditableParameter.HoleDiameter] = "diameterMm",
         [EditableParameter.BlindHoleDepth] = "depthMm", [EditableParameter.FilletRadius] = "radiusMm",
-        [EditableParameter.ChamferDistance] = "distanceMm"
+        [EditableParameter.ChamferDistance] = "distanceMm", [EditableParameter.PatternAngle] = "angleDeg"
     };
-    public double Expected(OperationNode owner, EditableParameter parameter) =>
-        Scalar(owner.Parameters[Fields.TryGetValue(parameter, out var field) ? field : ReadOnlyFields[parameter]]);
+    public double Expected(OperationNode owner, EditableParameter parameter) => parameter switch
+    {
+        EditableParameter.ProfileDiameter => ((CircleProfile)owner.Parameter<ProfileParameter>("profile").Value).DiameterMm,
+        EditableParameter.PatternAngle when owner.Kind == OperationKind.CreateCircularPattern => PatternGeometry.AngleDegrees(owner),
+        _ => Scalar(owner.Parameters[Fields.TryGetValue(parameter, out var field) ? field : ReadOnlyFields[parameter]])
+    };
     public static double Scalar(OperationParameter value) => value switch
     {
-        LengthParameter length => length.Millimeters, CountParameter count => count.Value,
+        LengthParameter length => length.Millimeters, CountParameter count => count.Value, AngleParameter angle => angle.Degrees,
         _ => throw new StateException(FailureCodes.OperationUnsupported, "Native mutations support finite scalar parameters.")
     };
 }

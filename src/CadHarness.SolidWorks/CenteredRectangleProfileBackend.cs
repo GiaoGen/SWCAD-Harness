@@ -47,7 +47,7 @@ internal static class CenteredRectangleProfileBackend
         throw new NativeOperationException("GEOMETRY_INVALID", "Cannot obtain the feature for the newly created sketch.");
     }
 
-    private static IFeature FindConstructionPlane(IModelDoc2 document)
+    internal static IFeature FindConstructionPlane(IModelDoc2 document)
     {
         // Narrow, locale-independent construction-frame selection in a fresh
         // Part. The first-stage backend supports XY-aligned default templates.

@@ -15,9 +15,12 @@ public abstract record MutationPreparation(ChangeSet Changes, FullValidationReas
 
 // Native API mechanics and rollback payloads stay in the adapter. No layout
 // formula, native interface, or display name belongs in this coordinator.
-public interface IMutationBackend<TPrepared, TRollback> where TPrepared : MutationPreparation
+public interface IMutationBackend<TPrepared, TRollback> : IRequestMutationBackend<OperationNode, TPrepared, TRollback>
+    where TPrepared : MutationPreparation { }
+
+public interface IRequestMutationBackend<TRequest, TPrepared, TRollback> where TPrepared : MutationPreparation
 {
-    TPrepared ResolveInputs(CadState state, OperationNode operation);
+    TPrepared ResolveInputs(CadState state, TRequest request);
     void Preflight(CadState state, TPrepared prepared);
     TRollback CaptureRollback(CadState state, TPrepared prepared);
     ChangeSet Execute(TPrepared prepared);
@@ -41,13 +44,21 @@ public sealed record MutationResult(bool Succeeded, string? FailureCode, string 
 
 public sealed class MutationTransaction<TPrepared, TRollback> where TPrepared : MutationPreparation
 {
+    private readonly RequestMutationTransaction<OperationNode, TPrepared, TRollback> transaction;
+    public MutationTransaction(ICadStateStore store, IMutationBackend<TPrepared, TRollback> backend) => transaction = new(store, backend);
+    public MutationResult Execute(OperationNode operation, FullValidationReason requested = FullValidationReason.None) => transaction.Execute(operation, requested);
+}
+
+// The same coordinator owns operation edits and whole construction programs.
+public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> where TPrepared : MutationPreparation
+{
     private readonly ICadStateStore store;
-    private readonly IMutationBackend<TPrepared, TRollback> backend;
+    private readonly IRequestMutationBackend<TRequest, TPrepared, TRollback> backend;
     private bool running;
-    public MutationTransaction(ICadStateStore store, IMutationBackend<TPrepared, TRollback> backend)
+    public RequestMutationTransaction(ICadStateStore store, IRequestMutationBackend<TRequest, TPrepared, TRollback> backend)
     { this.store = store; this.backend = backend; }
 
-    public MutationResult Execute(OperationNode operation, FullValidationReason requested = FullValidationReason.None)
+    public MutationResult Execute(TRequest request, FullValidationReason requested = FullValidationReason.None)
     {
         lock (this)
         {
@@ -62,7 +73,7 @@ public sealed class MutationTransaction<TPrepared, TRollback> where TPrepared : 
         try
         {
             state = store.Load(); StateValidation.Validate(state);
-            stage = "resolve inputs"; prepared = backend.ResolveInputs(state, operation);
+            stage = "resolve inputs"; prepared = backend.ResolveInputs(state, request);
             changes = prepared.Changes; dirty = DirtySet.Expand(state, changes);
             scope = ValidationScope.Select(state, dirty, requested | prepared.ValidationReasons);
             stage = "preflight"; backend.Preflight(state, prepared);
@@ -86,6 +97,10 @@ public sealed class MutationTransaction<TPrepared, TRollback> where TPrepared : 
             StateValidation.Validate(validated);
             if (!validated.Document.Matches(state.Document) || validated.Revision != checked(state.Revision + 1))
                 throw new StateException("TRANSACTION_INTEGRITY_FAILED", "Mutation changed identity or did not advance exactly one revision.");
+            // Creation introduces identities absent from the baseline. The final
+            // report uses the validated state so its full scope includes them.
+            dirty = DirtySet.Expand(validated, changes);
+            scope = ValidationScope.Select(validated, dirty, scope.Reasons);
             stage = "stage state"; backend.StageState(prepared, validated);
             stage = "atomic state commit"; store.Commit(validated);
             return new(true, null, "Mutation validated and atomically committed.", stage, true, rebuilt, false, false, true,
@@ -115,6 +130,7 @@ public sealed class MutationTransaction<TPrepared, TRollback> where TPrepared : 
         finally { lock (this) running = false; }
     }
     private static bool Same(ChangeSet a, ChangeSet b) => a.ChangedFeatures.ToHashSet().SetEquals(b.ChangedFeatures) &&
-        a.ChangedParameters.ToHashSet().SetEquals(b.ChangedParameters) && a.PossiblyInvalidatedEntities.ToHashSet().SetEquals(b.PossiblyInvalidatedEntities);
+        a.ChangedParameters.ToHashSet().SetEquals(b.ChangedParameters) && a.PossiblyInvalidatedEntities.ToHashSet().SetEquals(b.PossiblyInvalidatedEntities) &&
+        a.CreatedFeatures.ToHashSet().SetEquals(b.CreatedFeatures) && a.CreatedEntities.ToHashSet().SetEquals(b.CreatedEntities);
     private static (string Code, string Message) Failure(Exception error) => error is ICadFailure failure ? (failure.Code, error.Message) : ("MUTATION_FAILED", error.Message);
 }

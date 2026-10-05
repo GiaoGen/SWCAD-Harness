@@ -60,6 +60,8 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         // native references even though their dimensions have not changed.
         entities.AddRange(state.Entities.Where(e => e.Type == SemanticType.BodyRef).Select(e => e.SemanticId));
         var affected = plan.Dependencies.AffectedBy(changed);
+        foreach (var operation in plan.Program.Operations.Where(o => affected.Contains(o.SemanticId!) && o.Kind == OperationKind.CreateCircularPattern))
+            entities.Add(operation.Input("axis")!.References[0].SemanticId);
         foreach (var operation in plan.Program.Operations.Where(o => affected.Contains(o.SemanticId!) && o.Kind is OperationKind.CreateLinearPattern or OperationKind.CreateRectangularPattern))
         {
             var d = LinearPatternHandler.Dimensions(operation);

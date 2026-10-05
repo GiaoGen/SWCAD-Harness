@@ -1,0 +1,15 @@
+{
+  "programVersion": "0.2",
+  "operations": [
+    {"id":"base","kind":"create_extrude","semanticId":"disk","profile":{"kind":"circle","diameterMm":100},"depthMm":12},
+    {"id":"bore","kind":"create_through_hole","semanticId":"center_bore","host":"disk.top_face","diameterMm":20,"placement":{"xMm":0,"yMm":0}},
+    {"id":"seed","kind":"create_through_hole","semanticId":"bolt_seed","host":"disk.top_face","diameterMm":8,"placement":{"xMm":35,"yMm":0}},
+    {"id":"ring","kind":"create_circular_pattern","semanticId":"bolt_ring","seed":"bolt_seed","axis":{"semanticId":"disk.rotational_reference","type":"cylindrical_face"},"count":6}
+  ],
+  "relations": [
+    {"kind":"hosted_on","subject":"center_bore","reference":"disk.top_face"},
+    {"kind":"hosted_on","subject":"bolt_seed","reference":"disk.top_face"},
+    {"kind":"pattern_seed","subject":"bolt_ring","reference":"bolt_seed"},
+    {"kind":"equal_spacing","subject":"bolt_ring","reference":"bolt_seed"}
+  ]
+}

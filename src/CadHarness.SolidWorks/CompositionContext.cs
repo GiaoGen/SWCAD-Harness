@@ -71,13 +71,21 @@ public sealed partial class SolidWorksExecutionContext
         Register(id + ".local_frame", SemanticType.LocalFrame, id, feature, new(origin, Frame: new(origin, xAxis, yAxis, zAxis)));
         Register(id + ".axis_x", SemanticType.ReferenceAxis, id, feature, new(origin, xAxis));
         Register(id + ".axis_y", SemanticType.ReferenceAxis, id, feature, new(origin, yAxis));
-        var rectangle = (CenteredRectangleProfile)operation.Parameter<ProfileParameter>("profile").Value;
+        var profile = operation.Parameter<ProfileParameter>("profile").Value;
         var depth = Millimeters.ToMeters(operation.Parameter<LengthParameter>("depthMm").Millimeters);
         var faces = NativeTopology.Faces(body);
         var top = NativeTopology.Unique(faces.Where(f => NativeTopology.IsZPlane(f, depth)), "extrude top face");
         var bottom = NativeTopology.Unique(faces.Where(f => NativeTopology.IsZPlane(f, 0)), "extrude bottom face");
         Register(id + ".top_face", SemanticType.PlanarFace, id, top);
         Register(id + ".bottom_face", SemanticType.PlanarFace, id, bottom);
+        if (profile is CircleProfile circle)
+        {
+            Register(id + ".rotational_reference", SemanticType.CylindricalFace, id,
+                NativeTopology.Unique(faces.Where(f => f.GetSurface() is ISurface s && s.IsCylinder() &&
+                    NativeTopology.Near(NativeGeometry.Doubles(s.CylinderParams)[6], circle.DiameterMm / 2000)), "extrude outer cylindrical face"));
+            return;
+        }
+        var rectangle = (CenteredRectangleProfile)profile;
         var edges = NativeTopology.Edges(body);
         var w = Millimeters.ToMeters(rectangle.WidthMm) / 2;
         var h = Millimeters.ToMeters(rectangle.HeightMm) / 2;

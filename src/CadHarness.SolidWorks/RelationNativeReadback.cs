@@ -17,6 +17,20 @@ internal static class RelationNativeReadback
             var feature = context.DirectFeature(operation.SemanticId!);
             if (feature.GetErrorCode2(out var warning) != 0 || warning)
                 throw new NativeOperationException("FEATURE_REBUILD_FAILED", "Native managed feature error or warning.");
+            if (operation.Kind == OperationKind.CreateExtrude && operation.Parameter<ProfileParameter>("profile").Value is CircleProfile diskProfile)
+            {
+                var axis = context.DirectFace(operation.SemanticId + ".rotational_reference");
+                CreateCircularPatternHandler.Reverse(axis);
+                if (scope is null || scope.FullModel || scope.Parameters.Contains(operation.SemanticId + ".profile_diameter"))
+                    Near(NativeGeometry.Doubles(((ISurface)axis.GetSurface()).CylinderParams)[6] * 2000, diskProfile.DiameterMm, "Native circle profile diameter differs.");
+                if (scope is null || scope.FullModel || scope.Parameters.Contains(operation.SemanticId + ".extrusion_depth"))
+                    Near(((IExtrudeFeatureData2)feature.GetDefinition()).GetDepth(true) * 1000, operation.Parameter<LengthParameter>("depthMm").Millimeters, "Native circle extrusion depth differs.");
+            }
+            if (operation.Kind == OperationKind.CreateCircularPattern)
+            {
+                CreateCircularPatternHandler.VerifyDefinition(context, operation, feature);
+                NativeHoleInstanceVerifier.Verify(context, expected, new[] { PatternGeometry.Seed(operation) });
+            }
             if (operation.Kind is OperationKind.CreateThroughHole or OperationKind.CreateBlindHole)
             {
                 var circle = NativeHoleProfile.Read(context, operation.SemanticId!);

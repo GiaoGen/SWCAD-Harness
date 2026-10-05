@@ -10,6 +10,7 @@ namespace CadHarness.Planning;
 public enum PlanningMode { CreateModel, EditModel }
 public sealed record ParameterEditCapability(string Target, OperationKind OwnerKind, EditableParameter Parameter,
     ParameterContract ValueContract);
+public sealed record ProfileOutputCapability(ProfileKind Profile, IReadOnlyList<SemanticOutput> Outputs);
 
 // Supplied by a runtime projection, never inferred from the entire IR registry.
 // The registry here is a private, finite executable subset for this request mode.
@@ -22,15 +23,22 @@ public sealed class RuntimeCapabilityCatalog
     public IReadOnlyList<RelationKind> Relations { get; }
     public IReadOnlyList<ParameterEditCapability> ParameterEdits { get; }
     public IReadOnlyList<string> Constraints { get; }
+    public IReadOnlyList<ProfileOutputCapability> ProfileOutputs { get; }
 
     public RuntimeCapabilityCatalog(string runtimeId, PlanningMode mode, IEnumerable<OperationContract> operations,
         IEnumerable<ProfileKind> profiles, IEnumerable<RelationKind> relations,
-        IEnumerable<ParameterEditCapability> parameterEdits, IEnumerable<string> constraints)
+        IEnumerable<ParameterEditCapability> parameterEdits, IEnumerable<string> constraints,
+        IEnumerable<ProfileOutputCapability>? profileOutputs = null)
     {
         RuntimeId = runtimeId; Mode = mode; Registry = new(operations);
         Profiles = Array.AsReadOnly(profiles.Distinct().ToArray());
         Relations = Array.AsReadOnly(relations.Distinct().ToArray());
         ParameterEdits = Array.AsReadOnly(parameterEdits.ToArray()); Constraints = Array.AsReadOnly(constraints.ToArray());
+        ProfileOutputs = Array.AsReadOnly((profileOutputs ?? Array.Empty<ProfileOutputCapability>())
+            .Select(p => p with { Outputs = Array.AsReadOnly(p.Outputs.ToArray()) }).ToArray());
+        if (ProfileOutputs.Select(p => p.Profile).Distinct().Count() != ProfileOutputs.Count ||
+            ProfileOutputs.Any(p => !Profiles.Contains(p.Profile) || !Registry.TryGet(OperationKind.CreateExtrude, out var contract) ||
+                p.Outputs.Any(o => !contract.Outputs.Contains(o)))) throw new ArgumentException("Invalid profile output projection.");
         if (string.IsNullOrWhiteSpace(runtimeId) || !Enum.IsDefined(mode) || Profiles.Any(p => !Enum.IsDefined(p)) ||
             Relations.Any(r => !Enum.IsDefined(r)) || (mode == PlanningMode.CreateModel && ParameterEdits.Count != 0) ||
             (mode == PlanningMode.EditModel && Registry.Contracts.Any(o => o.Kind != OperationKind.EditParameter)))
@@ -43,11 +51,22 @@ public sealed class RuntimeCapabilityCatalog
         if (!basic.IsValid) return basic;
         var issues = new List<ValidationIssue>();
         void Unsupported(string path, string message) => issues.Add(new(FailureCodes.OperationUnsupported, path, message));
+        var available = new Dictionary<string, SemanticType>(StringComparer.Ordinal);
         for (var i = 0; i < program.Operations.Count; i++)
         {
             var operation = program.Operations[i];
             foreach (var profile in operation.Parameters.Values.OfType<ProfileParameter>())
                 if (!Profiles.Contains(profile.Value.Kind)) Unsupported($"$.operations[{i}].profile", "Profile is not executable by this runtime.");
+            if (Mode == PlanningMode.CreateModel)
+            {
+                foreach (var reference in operation.Inputs.SelectMany(input => input.References))
+                    if (!available.TryGetValue(reference.SemanticId, out var type) || type != reference.Type)
+                        Unsupported($"$.operations[{i}].inputs", "Input is unavailable for the producing operation/profile: " + reference.SemanticId);
+                var profile = operation.Parameters.Values.OfType<ProfileParameter>().SingleOrDefault();
+                var outputSet = profile is null ? null : ProfileOutputs.SingleOrDefault(p => p.Profile == profile.Value.Kind)?.Outputs;
+                foreach (var output in outputSet ?? Registry.Get(operation.Kind).Outputs)
+                    available[operation.SemanticId! + output.Suffix] = output.Type;
+            }
             if (operation.Kind == OperationKind.EditParameter)
             {
                 var target = operation.Input("target")!.References[0].SemanticId;
@@ -75,6 +94,7 @@ public sealed class RuntimeCapabilityCatalog
         operations = Registry.Contracts.Select(o => new
         { kind = o.WireName, inputs = o.Inputs, parameters = o.Parameters, outputs = o.Outputs, preconditions = o.Preconditions }),
         profiles = Profiles.Select(p => p == ProfileKind.CenteredRectangle ? "centered_rectangle" : "circle"),
+        outputsByProfile = ProfileOutputs.Select(p => new { profile = p.Profile == ProfileKind.Circle ? "circle" : "centered_rectangle", outputs = p.Outputs }),
         relations = Relations.Select(r => WireNames.Of(r)),
         parameterEdits = ParameterEdits.Select(e => new { target = e.Target, ownerKind = WireNames.Of(e.OwnerKind), parameter = WireNames.Of(e.Parameter), value = e.ValueContract }),
         constraints = Constraints

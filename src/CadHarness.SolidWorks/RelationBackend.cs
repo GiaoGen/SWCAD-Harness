@@ -17,8 +17,8 @@ public sealed record RelationEditResult(bool Succeeded, string? FailureCode, str
     public bool StateCommitted => false;
 }
 
-// M5's bounded construction/edit path proves relation propagation. It has no
-// generic mutation transaction, rollback, DirtySet or validation profiles.
+// Construction and current edits share the transaction coordinator. The older
+// CadState edit overload remains the original nontransactional M5 session API.
 public sealed class RelationBackend
 {
     // M6 entry point: load the committed snapshot and use the generic
@@ -27,44 +27,32 @@ public sealed class RelationBackend
         FullValidationReason requested = FullValidationReason.None) =>
         new MutationTransaction<NativeEditPreparation, NativeEditRollback>(store, new TransactionalParameterBackend(context)).Execute(edit, requested);
 
-    public PreflightResult Preflight(CadProgram program)
+    public PreflightResult Preflight(CadProgram program, CadProgram? prior = null)
     {
         try
         {
-            var plan = new DesignRelationEngine().Solve(program);
-            return new CompositionBackend().Preflight(plan.Program with { Relations = Array.Empty<DesignRelation>() });
+            ConstructionPrograms.Plan(program, prior);
+            return PreflightResult.Success;
         }
         catch (StateException error) { return new(false, error.Code, error.Message); }
     }
-    public CompositionExecutionResult Create(SolidWorksExecutionContext context, CadProgram program)
+    public CompositionExecutionResult Create(SolidWorksExecutionContext context, CadProgram program, ICadStateStore? store = null)
     {
-        var preflight = Preflight(program);
-        if (!preflight.IsValid) return new(false, preflight.FailureCode, preflight.Message, Array.Empty<OperationExecutionResult>());
         context.CheckThread();
-        if (context.RelationProgram is not null || context.ConstructedFeatureIds.Count != 0)
-            return new(false, FailureCodes.PreconditionFailed, "A new relation construction context is required.", Array.Empty<OperationExecutionResult>());
-        var plan = new DesignRelationEngine().Solve(program);
-        var nativeMutationStarted = false;
         try
         {
-            if (context.Document.GetType() != (int)swDocumentTypes_e.swDocPART ||
-                NativeGeometry.SolidBodies(context.Document).Count != 0 || context.Document.GetActiveSketch2() is not null)
-                throw new StateException(FailureCodes.PreconditionFailed, "Relation construction requires an empty Part outside sketch editing.");
-            nativeMutationStarted = true;
-            DocumentIdentityAdapter.EnsurePersistentIds(context);
-            context.RelationProgram = plan.Program; context.RelationDependencies = plan.Dependencies;
-            var result = new CompositionBackend().Execute(context, plan.Program with { Relations = Array.Empty<DesignRelation>() });
-            if (!result.Succeeded) { context.RelationContextUsable = false; return result; }
-            RelationNativeReadback.Verify(context, plan.Program);
-            context.CaptureBindingState();
-            return result;
+            // Pure program/layout rejection precedes even provisional state
+            // capture, identity-property registration or native sketch creation.
+            ConstructionPrograms.Plan(program, context.RelationProgram);
+            store ??= new ConstructionMemoryStore(context.CaptureConstructionState());
+            var backend = new TransactionalConstructionBackend(context);
+            var result = new RequestMutationTransaction<CadProgram, ConstructionPreparation, ConstructionRollback>(store, backend).Execute(program);
+            return new(result.Succeeded, result.FailureCode, result.Message, backend.Operations) { Transaction = result };
         }
-        catch (Exception error) when (error is StateException or NativeOperationException or COMException)
+        catch (Exception error)
         {
-            context.RelationContextUsable = false;
             var failure = Failure(error);
-            var started = nativeMutationStarted || context.ConstructedFeatureIds.Count != 0;
-            return new(false, failure.Code, failure.Message, new[] { new OperationExecutionResult(false, failure.Code, failure.Message, null, started, false) });
+            return new(false, failure.Code, failure.Message, Array.Empty<OperationExecutionResult>());
         }
     }
     public RelationEditResult Edit(SolidWorksExecutionContext context, CadState state, OperationNode edit)

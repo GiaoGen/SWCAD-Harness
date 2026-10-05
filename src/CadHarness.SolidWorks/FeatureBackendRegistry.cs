@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CadHarness.Ir;
+using CadHarness.State;
 
 namespace CadHarness.SolidWorks;
 
@@ -11,7 +12,7 @@ public sealed class FeatureBackendRegistry
     public FeatureBackendRegistry() => handlers = new IOperationBackendHandler[]
     {
         new CreateExtrudeHandler(), new CreateThroughHoleHandler(), new CreateBlindHoleHandler(),
-        new CreateLinearPatternHandler(), new CreateRectangularPatternHandler(), new ApplyFilletHandler(), new ApplyChamferHandler()
+        new CreateLinearPatternHandler(), new CreateRectangularPatternHandler(), new CreateCircularPatternHandler(), new ApplyFilletHandler(), new ApplyChamferHandler()
     }.ToDictionary(h => h.Kind);
     public IReadOnlyList<OperationKind> SupportedKinds => handlers.Keys.ToArray();
     public bool TryGet(OperationKind kind, out IOperationBackendHandler handler) => handlers.TryGetValue(kind, out handler!);
@@ -20,18 +21,24 @@ public sealed class FeatureBackendRegistry
 public sealed record CompositionExecutionResult(bool Succeeded, string? FailureCode, string Message,
     IReadOnlyList<OperationExecutionResult> Operations)
 {
-    public bool MutationStarted => Operations.Any(x => x.MutationStarted);
-    public bool RollbackAttempted => false;
-    public bool RollbackSucceeded => false;
-    public bool StateCommitted => false;
+    public MutationResult? Transaction { get; init; }
+    public bool MutationStarted => Transaction?.MutationStarted ?? Operations.Any(x => x.MutationStarted);
+    public bool RollbackAttempted => Transaction?.RollbackAttempted ?? false;
+    public bool RollbackSucceeded => Transaction?.RollbackSucceeded ?? false;
+    public bool StateCommitted => Transaction?.StateCommitted ?? false;
 }
 
-// Executes a finite construction program in a fresh Part. Generic state binding,
-// relations, editing and transactions are reserved for M5/M6.
+// Public construction is transactional. The raw loop is internal and executes
+// only the addition already checked against the complete construction plan.
 public sealed class CompositionBackend
 {
     private readonly FeatureBackendRegistry registry = new();
-    public PreflightResult Preflight(CadProgram program)
+    public PreflightResult Preflight(CadProgram program, CadProgram? prior = null)
+    {
+        try { ConstructionPrograms.Plan(program, prior); return PreflightResult.Success; }
+        catch (StateException error) { return new(false, error.Code, error.Message); }
+    }
+    internal PreflightResult PreflightPrepared(CadProgram program)
     {
         var validation = new ProgramValidator().Validate(program);
         if (!validation.IsValid) return new(false, validation.Issues[0].Code, validation.Issues[0].Message);
@@ -47,16 +54,17 @@ public sealed class CompositionBackend
             foreach (var reference in operation.Inputs.SelectMany(i => i.References))
                 if (!symbols.TryGetValue(reference.SemanticId, out var type) || reference.Type != type)
                     return new(false, "BINDING_UNRESOLVED", "Input is not a prior typed construction output: " + reference.SemanticId + ".");
-            foreach (var output in OperationRegistry.Default.Get(operation.Kind).Outputs)
-                if (output.Type != SemanticType.LocalFrame) // M4 has no native local-frame binding.
-                    symbols.Add(operation.SemanticId! + output.Suffix, output.Type);
+            foreach (var output in ProfileOutputs.For(operation))
+                symbols.Add(operation.SemanticId! + output.Suffix, output.Type);
         }
         return PreflightResult.Success;
     }
     public CompositionExecutionResult Execute(SolidWorksExecutionContext context, CadProgram program)
+        => new RelationBackend().Create(context, program);
+
+    // Only the transaction adapter calls this per-feature execution loop.
+    internal CompositionExecutionResult ExecutePrepared(SolidWorksExecutionContext context, CadProgram program)
     {
-        var check = Preflight(program);
-        if (!check.IsValid) return new(false, check.FailureCode, check.Message, Array.Empty<OperationExecutionResult>());
         context.CheckThread();
         var results = new List<OperationExecutionResult>();
         foreach (var operation in program.Operations)

@@ -20,7 +20,8 @@ public static class StateValidation
             Invalid("Part document and configuration identity are required; empty path denotes an unsaved live Part.");
         if (state.Features is null || state.Entities is null || state.Parameters is null || state.Bindings is null ||
             state.Relations is null || state.Dependencies is null) Invalid("All state arrays are required.");
-        if (state.Features!.Count is < 1 or > 256 || state.Entities!.Count > 1024 || state.Parameters!.Count > 4096 || state.Bindings!.Count > 4096)
+        // An empty managed Part is a legitimate construction transaction baseline.
+        if (state.Features!.Count > 256 || state.Entities!.Count > 1024 || state.Parameters!.Count > 4096 || state.Bindings!.Count > 4096)
             Invalid("State exceeds finite schema bounds.");
         if (state.Relations!.Count > 48 || state.Dependencies!.Count > 4096) Invalid("Relation/dependency count exceeds finite state bounds.");
         var features = new Dictionary<string, FeatureNode>(StringComparer.Ordinal);
@@ -86,7 +87,9 @@ public static class StateValidation
             if (reference!.Type != expected) Invalid("Relation reference has the wrong semantic type.");
             var subjectKind = features[relation.Subject].Kind;
             if (relation.Kind == RelationKind.HostedOn && subjectKind is not (OperationKind.CreateThroughHole or OperationKind.CreateBlindHole)) Invalid("HostedOn subject must be a hole.");
-            if (relation.Kind is RelationKind.PatternSeed or RelationKind.EqualSpacing or RelationKind.CenteredAbout or RelationKind.SymmetricAboutAxis &&
+            if (relation.Kind is RelationKind.PatternSeed or RelationKind.EqualSpacing &&
+                subjectKind is not (OperationKind.CreateLinearPattern or OperationKind.CreateRectangularPattern or OperationKind.CreateCircularPattern)) Invalid("Pattern relation subject has the wrong feature kind.");
+            if (relation.Kind is RelationKind.CenteredAbout or RelationKind.SymmetricAboutAxis &&
                 subjectKind is not (OperationKind.CreateLinearPattern or OperationKind.CreateRectangularPattern)) Invalid("Pattern relation subject has the wrong feature kind.");
         }
         if (StateRelationData.Relations(state).Distinct().Count() != state.Relations.Count) Invalid("Duplicate design relation.");

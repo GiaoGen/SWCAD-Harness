@@ -16,8 +16,8 @@ public static class DocumentIdentityAdapter
         context.CheckThread();
         var document = context.Document;
         var configuration = document.ConfigurationManager.ActiveConfiguration.Name;
-        Ensure((ICustomPropertyManager)document.Extension.CustomPropertyManager[""], DocumentProperty);
-        Ensure((ICustomPropertyManager)document.Extension.CustomPropertyManager[configuration], ConfigurationProperty);
+        Ensure((ICustomPropertyManager)document.Extension.CustomPropertyManager[""], DocumentProperty, context.ConstructionDocumentId);
+        Ensure((ICustomPropertyManager)document.Extension.CustomPropertyManager[configuration], ConfigurationProperty, context.ConstructionConfigurationId);
     }
 
     public static DocumentIdentity Read(SolidWorksExecutionContext context)
@@ -27,6 +27,24 @@ public static class DocumentIdentityAdapter
     // path explicitly represents live state; durable M3 capture still needs Save.
     public static DocumentIdentity ReadForBinding(SolidWorksExecutionContext context)
         => ReadIdentity(context, true);
+
+    // Read-only identity for a pristine Part. These provisional IDs are written
+    // only inside the native transaction, and removed again on rollback.
+    internal static DocumentIdentity ReadForConstruction(SolidWorksExecutionContext context)
+    {
+        context.CheckThread();
+        var doc = context.Document; var configuration = doc.ConfigurationManager.ActiveConfiguration.Name;
+        Guid ReadOrProvisional(string scope, string name, Guid provisional)
+        {
+            var properties = (ICustomPropertyManager)doc.Extension.CustomPropertyManager[scope];
+            var status = properties.Get6(name, false, out _, out _, out _, out _);
+            return status == (int)swCustomInfoGetResult_e.swCustomInfoGetResult_NotPresent ? provisional : ReadGuid(properties, name);
+        }
+        var path = doc.GetPathName();
+        return new(ReadOrProvisional("", DocumentProperty, context.ConstructionDocumentId),
+            ReadOrProvisional(configuration, ConfigurationProperty, context.ConstructionConfigurationId), configuration,
+            string.IsNullOrWhiteSpace(path) ? "" : Path.GetFullPath(path));
+    }
 
     private static DocumentIdentity ReadIdentity(SolidWorksExecutionContext context, bool allowUnsaved)
     {
@@ -44,7 +62,7 @@ public static class DocumentIdentityAdapter
     {
         if (!expected.Matches(Read(context))) throw new StateException("STALE_REFERENCE", "Document or configuration identity differs; no reference was bound.");
     }
-    private static void Ensure(ICustomPropertyManager properties, string name)
+    private static void Ensure(ICustomPropertyManager properties, string name, Guid id)
     {
         var status = properties.Get6(name, false, out var value, out _, out _, out _);
         if (status != (int)swCustomInfoGetResult_e.swCustomInfoGetResult_NotPresent)
@@ -53,7 +71,6 @@ public static class DocumentIdentityAdapter
                 throw new StateException("STALE_REFERENCE", "Existing managed identity property is invalid.");
             return;
         }
-        var id = Guid.NewGuid();
         if (properties.Add3(name, (int)swCustomInfoType_e.swCustomInfoText, id.ToString("D"),
                 (int)swCustomPropertyAddOption_e.swCustomPropertyOnlyIfNew) != (int)swCustomInfoAddResult_e.swCustomInfoAddResult_AddedOrChanged)
             throw new StateException("OPERATION_PRECONDITION_FAILED", "Cannot register native document/configuration identity.");

@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–8 + M9A
+# CAD Harness v0.2 — Milestones 0–8 + M9A/M9B/M9C
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -12,7 +12,7 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
 
-最新扩展 **M9A COMPLETE**：原生参数 mutation 注册表、厚度/通孔孔径事务编辑、阵列实例读回和相应 Planner 能力投影。完整 M9 泛化评估尚未执行，M9B+ 未实现。M0–M8 以下各节保留各阶段验收时的范围；M9A 的当前能力见末节。
+最新扩展 **M9C COMPLETE**：整 CadProgram construction 复用编辑事务协调器，原生修改后失败可恢复执行前模型、绑定/session metadata 和 CADState；预检拒绝不开始 mutation。M9A/M9B 的参数 mutation、Circle/CircularPattern 与能力投影继续保留。完整 M9 泛化评估及后续扩展未执行。以下各里程碑章节保留各阶段验收时的范围；当前能力见末节。
 
 Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。Milestone 9 未实现。
 
@@ -40,7 +40,7 @@ Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Miles
 {"semanticId":"base_plate.top_face","type":"planar_face"}
 ```
 
-字符串简写采用契约中首个允许的类型；其他类型应明确声明。例如圆周阵列的参考轴应使用 `type: reference_axis`。对于本计划中已创建的实体，还会检查声明类型是否与操作输出一致、引用是否出现在创建之后。外部语义引用仅作类型检查，实际绑定留给后续里程碑。
+字符串简写采用契约中首个允许的类型；其他类型应明确声明。当前原生圆周阵列使用圆盘的 `rotational_reference`，显式类型为 `cylindrical_face`。对于本计划中已创建的实体，还会检查声明类型是否与操作输出一致、引用是否出现在创建之后。IR 词汇允许外部语义引用，当前 construction runtime 要求输入为先前真实输出。
 
 长度单位为毫米，角度为度。所有数值必须有限；尺寸必须为正；计数必须为 32 位整数并满足操作的最小值。线性/圆周阵列至少两个实例，矩形阵列总实例数至少两个。参数编辑采用有限枚举，并对本计划内目标检查参数归属。
 
@@ -323,4 +323,53 @@ M9A **26/26 纯测试通过**；15 项目 Release 构建 **0 警告、0 错误**
 
 本扩展仍使用当前托管构建会话；没有新增组合文件重开/控制器重启恢复、任意拓扑恢复、原生文件与 JSON 联合提交或构造事务回滚。详细记录见 `docs/milestone-9a-verification.md`。
 
-**M9B+ NOT IMPLEMENTED；完整 Milestone 9 泛化评估未执行。**
+以上为 M9A 验收时范围；M9B 扩展如下。
+
+## M9B — 通用圆形几何 capability
+
+`CreateExtrudeHandler` 支持 `centered_rectangle` 和 `circle`。圆盘输出 feature、body、top/bottom face、local frame、逻辑 X/Y 轴，以及真实外圆柱面 `rotational_reference`。圆盘不输出矩形方向边和角边，矩形不输出外圆柱面；`ProfileOutputs`、composition preflight 和结构化 `outputsByProfile` 投影共同约束这些区别。
+
+`CreateCircularPatternHandler` 注册为原生后端：seed 为托管孔 feature，axis 为同一圆形宿主的真实 `CylindricalFace`。默认 `angleDeg=360`；关于 local +Z 旋转，整圈步长 angle/count，部分圆弧步长 angle/(count−1)。有限上限 1024 实例，圆形边界及孔间相交在执行前检查。圆周阵列支持 `pattern_seed`、`equal_spacing`；孔继续支持 `hosted_on`。`centered_about`/`symmetric_about_axis` 保持线性/矩形阵列范围。
+
+状态捕获直接读取原生圆盘直径、厚度、孔径、阵列 count/angle；native readback 校验 seed/axis persistent references、原生阵列模式、实例孔位/半径/贯穿边界。M9A `HoleDiameterMutationHandler` 复用通用实例几何验证，ChangeSet 显式包含圆周轴，普通编辑保持增量 scope。Planner 不暴露圆盘尺寸、圆周 count/angle 的未注册编辑能力。
+
+```powershell
+.\scripts\test-milestone9b.ps1
+# 已完成原生验收；正常无需再次消耗 Part 预算。
+.\scripts\test-milestone9b.ps1 -Live -PartTemplate 'C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2024\templates\gb_part.prtdot'
+```
+
+M9B **32/32 专属纯测试通过**；**16 项目 Release 编译 0 警告、0 错误**。原生 G4 为 Ø100×12 圆盘、中心 Ø20 通孔、Ø70 PCD 上 6×Ø8 通孔，体积 **86858.7536864506 mm³**。同 Part 验证部分圆弧 4 实例/210° 的原生定义读回及漂移拒绝，六孔 Ø8→Ø9 事务传播、真实 atomic commit failure 回滚，再提交恢复名义 G4。创建/关闭 **1/1 Part**，原活动文档恢复，耐久预算 **1/2**。
+
+G4 只存在于测试 fixture/断言，生产代码按 profile、孔、阵列参数组合。证据在 `artifacts/milestone9b/`，详细说明见 [M9B verification](docs/milestone-9b-verification.md)。以上为 M9B 验收时范围；M9C 增加 construction transaction，见下节。
+
+## M9C — Construction transaction / rollback
+
+`RequestMutationTransaction<TRequest,...>` 是单个 edit operation 和整 construction CadProgram 共用的协调器。原 `MutationTransaction` 编辑入口是其薄包装；原生 mechanics 仍由 adapter 提供，事务中不增加具体 operation/test case 分支。ChangeSet 显式声明 CreatedFeatures/CreatedEntities；空 CADState 可表示尚未创建特征的 Part。
+
+`RelationBackend.Create` 和 `CompositionBackend.Execute` 都通过 `TransactionalConstructionBackend`。公共 preflight 与 execute 检查完整程序，包括关系解算、宿主边界、孔相交、pattern limits 和 blind depth。已有托管会话可追加创建操作；追加程序不能通过关系隐式修改已有 operation。Planner 仍只暴露既有 creation/edit capabilities，没有新增任意模型追加规划模式。
+
+回滚 checkpoint 保存执行前原生 feature inventory、body/face persistent references、质量/几何/拓扑、自定义属性和内部 session。失败时按逆序删除本次新增 feature 及其 absorbed sketches，恢复 metadata，再重建并完整核对原模型与 CADState；不是按 case 删除指定孔/圆角。rollback 自身失败会显式记录错误并 invalidate session。
+
+```csharp
+// CaptureConstructionState 对空 Part 只读取并提供 provisional identity，
+// 不先写入 native identity properties。
+var store = new AtomicStateStore(statePath);
+store.Commit(context.CaptureConstructionState());
+var result = new RelationBackend().Create(context, constructionProgram, store);
+// result.MutationStarted / RollbackAttempted / RollbackSucceeded / StateCommitted
+// result.Transaction 包含 stage、scope、revision 及 rollback failure detail。
+```
+
+不传 store 的既有 Create API 使用同一事务并提交到 live session；`StateCommitted=true` 此时表示内存状态发布，持久 JSON 应明确传入 AtomicStateStore。构建成功现在与编辑一样推进一次 revision（初次构建 0→1）；失败保留原 revision。有效圆角/倒角消耗的边保留实际失效 health，后续 Binder/preflight 拒绝再次使用。
+
+```powershell
+.\scripts\test-milestone9c.ps1
+# 已完成两次定向原生验收，M9C native 预算已用完；以下仅为原执行命令记录。
+.\scripts\test-milestone9c.ps1 -Live -PartTemplate 'C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2024\templates\gb_part.prtdot'
+.\scripts\test-milestone9c.ps1 -LiveTopology -PartTemplate 'C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2024\templates\gb_part.prtdot'
+```
+
+M9C **22/22 专属纯/mock 测试通过**；**17 项目 Release 编译零警告、零错误**。原生验证包含空 Part 和已有模型的真实 impossible fillet 修改后失败回滚、修改前 pattern/placement/已消耗边拒绝、后置条件失败、真实 atomic commit failure、正常创建/追加提交，以及 R1 圆角原模型上的追加失败回滚。九个失败场景的模型、磁盘 state 和 live session state 均未改变；恢复前后两组 JSON 的 SHA256 分别相同。
+
+原生创建/关闭 **2/2 Parts**，并发最大1，原活动状态均恢复，预算 **2/2**；未运行 M9 generalization suite、旧里程碑测试或性能 benchmark。详细记录见 [M9C verification](docs/milestone-9c-verification.md)，证据在 `artifacts/milestone9c/`。后续扩展与完整 M9 泛化评估未执行。

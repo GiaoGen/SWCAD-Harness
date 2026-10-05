@@ -81,7 +81,8 @@ public sealed class OperationRegistry
                 new(".axis_x", SemanticType.ReferenceAxis), new(".axis_y", SemanticType.ReferenceAxis),
                 new(".direction_x", SemanticType.LinearEdge), new(".direction_y", SemanticType.LinearEdge),
                 new(".outer_edge_1", SemanticType.LinearEdge), new(".outer_edge_2", SemanticType.LinearEdge),
-                new(".outer_edge_3", SemanticType.LinearEdge), new(".outer_edge_4", SemanticType.LinearEdge)));
+                new(".outer_edge_3", SemanticType.LinearEdge), new(".outer_edge_4", SemanticType.LinearEdge),
+                new(".rotational_reference", SemanticType.CylindricalFace)));
         yield return new(OperationKind.CreateThroughHole, "create_through_hole", true,
             List(Input("host", SemanticRole.HostSurface)),
             List(Length("diameterMm"), new ParameterContract("placement", ParameterKind.Point2D, false)),
