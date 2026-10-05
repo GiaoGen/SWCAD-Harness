@@ -10,7 +10,11 @@ namespace CadHarness.Planning;
 // Optional IR fields use closed variants: no null field is sent to the IR parser.
 public static class PlannerResponseSchema
 {
-    public static string Create(RuntimeCapabilityCatalog catalog)
+    public const string IdentifierInstructions = "Identifiers must be lowercase snake_case, start with a letter and match the schema's identifier patterns. " +
+        "Do not use camelCase, native-looking numbered names such as extrude1, or native API identifiers. " +
+        "Use semantic names for operations/features. Dotted references append an exact documented output suffix to an existing semantic ID. " +
+        "Relation subjects and references must satisfy the projected relationContracts; a direction axis is not a local frame or pattern seed. ";
+    public static string Create(RuntimeCapabilityCatalog catalog, bool stepwise = false)
     {
         var alternatives = new List<object>();
         foreach (var operation in catalog.Registry.Contracts)
@@ -30,7 +34,7 @@ public static class PlannerResponseSchema
             var optional = new Dictionary<string, object>();
             foreach (var input in operation.Inputs)
             {
-                object reference = Closed(new() { ["semanticId"] = Identifier(), ["type"] = Strings(input.AcceptedTypes.Select(t => WireNames.Of(t))) });
+                object reference = Closed(new() { ["semanticId"] = Identifier(true), ["type"] = Strings(input.AcceptedTypes.Select(t => WireNames.Of(t))) });
                 if (input.IsSet) reference = new { type = "array", minItems = 1, maxItems = ProgramValidator.MaximumInputSetSize, items = reference };
                 (input.Required ? required : optional)[input.Name] = reference;
             }
@@ -56,22 +60,22 @@ public static class PlannerResponseSchema
         }
         object relationItems = catalog.Relations.Count == 0 ? new { type = "object", properties = new { }, additionalProperties = false, required = Array.Empty<string>() } :
             new { anyOf = catalog.Relations.Select(r => Closed(new()
-            { ["kind"] = Constant(WireNames.Of(r)), ["subject"] = Identifier(), ["reference"] = Identifier() })).ToArray() };
+            { ["kind"] = Constant(WireNames.Of(r)), ["subject"] = Identifier(), ["reference"] = Identifier(true) })).ToArray() };
         object program = alternatives.Count == 0 ? new { type = "null" } : Closed(new()
         {
             ["programVersion"] = Constant("0.2"),
-            ["operations"] = new { type = "array", minItems = 1, maxItems = catalog.Mode == PlanningMode.EditModel ? 1 : ProgramValidator.MaximumOperations, items = new { anyOf = alternatives } },
+            ["operations"] = new { type = "array", minItems = 1, maxItems = stepwise || catalog.Mode == PlanningMode.EditModel ? 1 : ProgramValidator.MaximumOperations, items = new { anyOf = alternatives } },
             ["relations"] = new { type = "array", maxItems = catalog.Relations.Count == 0 ? 0 : ProgramValidator.MaximumRelations, items = relationItems }
         });
         var schema = Closed(new()
         {
-            ["outcome"] = Strings(new[] { "planned", "unsupported" }),
+            ["outcome"] = Strings(stepwise ? new[] { "planned", "unsupported", "complete" } : new[] { "planned", "unsupported" }),
             ["program"] = alternatives.Count == 0 ? program : new { anyOf = new[] { program, new { type = "null" } } },
             ["reason"] = new { type = "string" }
         });
         return JsonSerializer.Serialize(schema, new JsonSerializerOptions { WriteIndented = true });
     }
-    private static object Identifier() => new { type = "string", maxLength = 128 };
+    private static object Identifier(bool reference = false) => new { type = "string", minLength = 1, maxLength = 128, pattern = Identifiers.SchemaPattern(reference) };
     private static object Constant(string value) => new { type = "string", @enum = new[] { value } };
     private static object Strings(IEnumerable<string> values) => new { type = "string", @enum = values.ToArray() };
     private static object Positive() => new { type = "number", exclusiveMinimum = 0 };

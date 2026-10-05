@@ -122,7 +122,7 @@ public sealed class TransactionalParameterBackend : IMutationBackend<NativeEditP
         prepared.Handler.Apply(context, prepared.After.Program.Operations.Single(o => o.SemanticId == prepared.Target), prepared.Parameter);
         return prepared.Changes;
     }
-    public bool Rebuild() => context.Document.ForceRebuild3(false);
+    public bool Rebuild() => ExecutionTelemetry.Rebuild(() => context.Document.ForceRebuild3(false));
     public void ValidatePostconditions(NativeEditPreparation prepared)
     {
         CheckIntegrity();

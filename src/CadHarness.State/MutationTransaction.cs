@@ -72,11 +72,14 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
         var stage = "load current state";
         try
         {
-            state = store.Load(); StateValidation.Validate(state);
-            stage = "resolve inputs"; prepared = backend.ResolveInputs(state, request);
+            state = store.Load();
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) StateValidation.Validate(state);
+            stage = "resolve inputs";
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) prepared = backend.ResolveInputs(state, request);
             changes = prepared.Changes; dirty = DirtySet.Expand(state, changes);
             scope = ValidationScope.Select(state, dirty, requested | prepared.ValidationReasons);
-            stage = "preflight"; backend.Preflight(state, prepared);
+            stage = "preflight";
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) backend.Preflight(state, prepared);
             stage = "capture rollback"; rollback = backend.CaptureRollback(state, prepared);
             stage = "execute"; started = true;
             var actual = backend.Execute(prepared);
@@ -84,17 +87,18 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
             stage = "rebuild"; rebuilt = backend.Rebuild();
             if (!rebuilt) throw new StateException("FEATURE_REBUILD_FAILED", "Mutation rebuild failed.");
             stage = "required postconditions";
-            try { backend.ValidatePostconditions(prepared); }
+            try { using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) backend.ValidatePostconditions(prepared); }
             catch when (backend.RecoveryAllowed)
             {
                 recovery = true; stage = "bounded recovery";
-                if (!backend.Recover(prepared) || !backend.Rebuild()) throw new StateException("RECOVERY_FAILED", "One allowed recovery attempt failed.");
-                backend.ValidatePostconditions(prepared);
+                if (!ExecutionTelemetry.Recover(() => backend.Recover(prepared)) || !backend.Rebuild()) throw new StateException("RECOVERY_FAILED", "One allowed recovery attempt failed.");
+                using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) backend.ValidatePostconditions(prepared);
                 scope = ValidationScope.Select(state, dirty, scope.Reasons | FullValidationReason.Recovery);
             }
             stage = "final validation";
-            var validated = backend.ValidateFinal(state, prepared, scope);
-            StateValidation.Validate(validated);
+            CadState validated;
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation))
+            { validated = backend.ValidateFinal(state, prepared, scope); StateValidation.Validate(validated); }
             if (!validated.Document.Matches(state.Document) || validated.Revision != checked(state.Revision + 1))
                 throw new StateException("TRANSACTION_INTEGRITY_FAILED", "Mutation changed identity or did not advance exactly one revision.");
             // Creation introduces identities absent from the baseline. The final
@@ -113,9 +117,10 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
             {
                 try
                 {
-                    backend.Rollback(rollback);
+                    ExecutionTelemetry.Rollback(() => backend.Rollback(rollback));
                     if (!backend.Rebuild()) throw new StateException("FEATURE_REBUILD_FAILED", "Rollback rebuild failed.");
-                    backend.ValidateRestored(state!, rollback, ValidationScope.Select(state!, dirty!, FullValidationReason.Rollback));
+                    using (ExecutionTelemetry.Measure(ExecutionPhase.Validation))
+                        backend.ValidateRestored(state!, rollback, ValidationScope.Select(state!, dirty!, FullValidationReason.Rollback));
                     restored = true;
                 }
                 catch (Exception rollbackError)

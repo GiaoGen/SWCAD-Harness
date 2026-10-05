@@ -40,6 +40,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.CircularGeometry
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ConstructionTransactions.Tests", "tests\CadHarness.ConstructionTransactions.Tests\CadHarness.ConstructionTransactions.Tests.csproj", "{9430E691-3717-43DB-B895-80C063EA3399}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Benchmark.Tests", "tests\CadHarness.Benchmark.Tests\CadHarness.Benchmark.Tests.csproj", "{3F23C92B-BC7F-4884-A3BA-565C820DC004}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
@@ -79,6 +81,8 @@ Global
 		{09C445E4-300E-4976-9CA1-57094C5ED759}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9430E691-3717-43DB-B895-80C063EA3399}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9430E691-3717-43DB-B895-80C063EA3399}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F23C92B-BC7F-4884-A3BA-565C820DC004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F23C92B-BC7F-4884-A3BA-565C820DC004}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C104C31F-96AC-4737-989B-874D0C566C8B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
@@ -91,5 +95,6 @@ Global
 		{E2C3E3E1-26C1-474E-B027-776B6DBA641C} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{09C445E4-300E-4976-9CA1-57094C5ED759} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{9430E691-3717-43DB-B895-80C063EA3399} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+		{3F23C92B-BC7F-4884-A3BA-565C820DC004} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 	EndGlobalSection
 EndGlobal

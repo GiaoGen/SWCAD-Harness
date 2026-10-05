@@ -9,6 +9,7 @@ internal static class ConstructionPrograms
 {
     internal static RelationPlan Plan(CadProgram request, CadProgram? prior)
     {
+        using var measured = ExecutionTelemetry.Measure(ExecutionPhase.Validation);
         var check = new ProgramValidator().Validate(request);
         if (!check.IsValid) throw new StateException(check.Issues[0].Code, check.Issues[0].Message);
         // Defensive copy through the finite IR serializer. A caller's mutable

@@ -104,7 +104,7 @@ public sealed class RelationBackend
             stage = "pattern scalar definition";
             NativePatternEditor.Apply(context, plan.Program.Operations.Single(o => o.SemanticId == target.SemanticId));
             stage = "rebuild";
-            rebuilt = context.Document.ForceRebuild3(false);
+            rebuilt = ExecutionTelemetry.Rebuild(() => context.Document.ForceRebuild3(false));
             if (!rebuilt) throw new NativeOperationException("FEATURE_REBUILD_FAILED", "Rebuild after relation edit failed.");
             stage = "native relation readback";
             RelationNativeReadback.Verify(context, plan.Program);

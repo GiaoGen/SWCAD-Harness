@@ -11,6 +11,7 @@ public enum PlanningMode { CreateModel, EditModel }
 public sealed record ParameterEditCapability(string Target, OperationKind OwnerKind, EditableParameter Parameter,
     ParameterContract ValueContract);
 public sealed record ProfileOutputCapability(ProfileKind Profile, IReadOnlyList<SemanticOutput> Outputs);
+public sealed record RelationPlanningContract(string Kind, string[] SubjectKinds, string ReferenceType, string Meaning);
 
 // Supplied by a runtime projection, never inferred from the entire IR registry.
 // The registry here is a private, finite executable subset for this request mode.
@@ -96,9 +97,26 @@ public sealed class RuntimeCapabilityCatalog
         profiles = Profiles.Select(p => p == ProfileKind.CenteredRectangle ? "centered_rectangle" : "circle"),
         outputsByProfile = ProfileOutputs.Select(p => new { profile = p.Profile == ProfileKind.Circle ? "circle" : "centered_rectangle", outputs = p.Outputs }),
         relations = Relations.Select(r => WireNames.Of(r)),
+        relationContracts = Relations.Select(RelationContract),
         parameterEdits = ParameterEdits.Select(e => new { target = e.Target, ownerKind = WireNames.Of(e.OwnerKind), parameter = WireNames.Of(e.Parameter), value = e.ValueContract }),
         constraints = Constraints
     }, JsonOptions);
+    // Describes existing deterministic relation semantics only. Projection still
+    // enumerates ONLY the runtime's executable relation handler kinds.
+    private static RelationPlanningContract RelationContract(RelationKind kind)
+    {
+        var patterns = new[] { "create_linear_pattern", "create_rectangular_pattern" };
+        var allPatterns = patterns.Append("create_circular_pattern").ToArray();
+        return kind switch
+        {
+            RelationKind.CenteredAbout => new(WireNames.Of(kind), patterns, "local_frame", "Center the complete pattern about the extrusion's .local_frame. Reference is a local frame, never an axis."),
+            RelationKind.SymmetricAboutAxis => new(WireNames.Of(kind), patterns, "reference_axis", "Symmetry about the extrusion's .axis_x or .axis_y in its local XY frame."),
+            RelationKind.HostedOn => new(WireNames.Of(kind), new[] { "create_through_hole", "create_blind_hole" }, "planar_face", "Hole subject is hosted on the extrusion's .top_face."),
+            RelationKind.PatternSeed => new(WireNames.Of(kind), allPatterns, "feature_ref", "Subject is the pattern; reference is the SAME seed hole feature semantic ID as its seed input."),
+            RelationKind.EqualSpacing => new(WireNames.Of(kind), allPatterns, "feature_ref", "Subject is the pattern; reference is the SAME seed hole feature as its seed input, never a direction axis. Assert uniform native steps."),
+            _ => throw new InvalidOperationException("No planner relation contract registered for projected relation: " + kind)
+        };
+    }
     private static readonly JsonSerializerOptions JsonOptions = new()
     { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) }, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 }

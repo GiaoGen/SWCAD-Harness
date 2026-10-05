@@ -72,7 +72,7 @@ public sealed class TransactionalConstructionBackend : IRequestMutationBackend<C
         if (!execution.Succeeded) throw new StateException(execution.FailureCode!, execution.Message);
         return prepared.Changes;
     }
-    public bool Rebuild() => context.Document.ForceRebuild3(false) && context.Document.Extension.NeedsRebuild2 == 0;
+    public bool Rebuild() => ExecutionTelemetry.Rebuild(() => context.Document.ForceRebuild3(false)) && context.Document.Extension.NeedsRebuild2 == 0;
     public void ValidatePostconditions(ConstructionPreparation prepared)
     {
         RelationNativeReadback.Verify(context, prepared.After.Program);

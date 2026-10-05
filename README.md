@@ -1,4 +1,4 @@
-# CAD Harness v0.2 — Milestones 0–8 + M9A–M9G
+# CAD Harness v0.2 — Milestones 0–9 + M10 implementation
 
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
@@ -12,7 +12,9 @@ M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立�
 
 本目录按 `Generalized_CAD_Harness_v0.2_CLEAN_PRD.md` 的 Milestone 1 实现纯 C# CAD Operation IR 与类型系统。未复制 v0.1 代码。
 
-最新验收 **M9 COMPLETE / M9G COMPLETE**：当前ReferenceAxis runtime下，G2创建、thickness 8→10、四孔Ø6→Ø8，以及Held-out创建、三通孔Ø7→Ø9/盲孔保持全部通过strict readback、geometry/state/refs和edit/construction rollback；ReferenceAxis count=1025的G6_Pattern在mutation前拒绝，0 Part。G1/G3/G5沿用同一production源码下的M9F，所有受Linear/Rectangular PatternDirection契约变化影响的supported/negative cases均已有当前runtime证据。M9G生产代码变更0，独立创建/关闭2/2 Parts，M9D/M9E/M9F原证据未改写。满足M10 prerequisite，可直接进入M10，未执行M10。详见 [M9 final acceptance](docs/milestone-9-final-acceptance.md)、[M9G verification](docs/milestone-9g-verification.md)。以下章节记录各阶段当时范围。
+当前 **M10 BLOCKED**：公平 stepwise agent、共享 DeepSeek JSON adapter、独立 benchmark、实际 rebuild/validation/recovery 计量已实现。第一轮按两项任务/两模式各 1 warm-up＋5 measured attempts 完整记录，创建/关闭24/24 Parts；正式运行整案与可编辑成功均0/20，不能宣称效率优势。已补齐通用 identifier/relation Planner 契约，当前21项纯测试PASS、0 Part；修复后的真实测量需新的独立24 Parts预算授权。M9原始验收/evidence保留。详见 [M10 verification](docs/milestone-10-verification.md)。当前范围的零-Part验证：`scripts/test-milestone10.ps1 -Mode Pure -EvidenceName milestone10-contract-fix -InteropDir <installed-api-redist>`。
+
+M9 历史验收 **M9 COMPLETE / M9G COMPLETE**：当前ReferenceAxis runtime下，G2创建、thickness 8→10、四孔Ø6→Ø8，以及Held-out创建、三通孔Ø7→Ø9/盲孔保持全部通过strict readback、geometry/state/refs和edit/construction rollback；ReferenceAxis count=1025的G6_Pattern在mutation前拒绝，0 Part。G1/G3/G5沿用同一production源码下的M9F，所有受Linear/Rectangular PatternDirection契约变化影响的supported/negative cases均已有当前runtime证据。M9G生产代码变更0，独立创建/关闭2/2 Parts，M9D/M9E/M9F原证据未改写。当时满足M10 prerequisite，尚未执行M10；当前M10状态见上方。详见 [M9 final acceptance](docs/milestone-9-final-acceptance.md)、[M9G verification](docs/milestone-9g-verification.md)。以下章节记录各阶段当时范围。
 
 Milestone 2 已增加单个居中矩形拉伸的最小 SOLIDWORKS 后端，Milestone 3 已增加该拉伸的 CADState、身份与持久引用恢复。Milestone 4 已增加可组合的通孔、盲孔、线性/矩形阵列、圆角和倒角处理器，并在该阶段通过 G1、G2 创建验收。Milestone 5 已实现语义 Binder、五类设计关系、依赖图，并通过两孔、2×2、2×3 居中编辑验收。Milestone 6 已实现通用事务、ChangeSet/DirtySet、增量验证、完整验证升级与回滚。Milestone 7 已加入运行时能力投影、严格单计划 Planner、确定性 fixture、可配置 OpenAI Responses LLM 适配器和 CLI；默认 0 Parts。Milestone 8 已实现可选 IBoundedJudge、受控语义候选选择和严格响应检查；无 Judge/Jev 时仍可工作。当前M9状态以新的final acceptance为准；历史M9D的BLOCKED矩阵保留作为修复前记录。
 

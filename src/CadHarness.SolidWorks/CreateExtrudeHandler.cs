@@ -73,12 +73,12 @@ public sealed class CreateExtrudeHandler : IOperationBackendHandler
                 (int)swStartConditions_e.swStartSketchPlane, 0, false);
             if (native is null) throw new NativeOperationException("GEOMETRY_INVALID", "Native extrusion returned no feature.");
             context.CreatedFeature = (IFeature)native;
-            var rebuilt = document.ForceRebuild3(false);
+            var rebuilt = ExecutionTelemetry.Rebuild(() => document.ForceRebuild3(false));
             var error = context.CreatedFeature.GetErrorCode2(out var warning);
             if (!rebuilt || error != 0 || warning || document.Extension.NeedsRebuild2 != 0)
                 return new(false, "FEATURE_REBUILD_FAILED", "Extrusion rebuild or native feature status failed.", operation.SemanticId, true, false);
             context.RegisterExtrude(operation, context.CreatedFeature);
-            if (!document.ForceRebuild3(false) || document.Extension.NeedsRebuild2 != 0)
+            if (!ExecutionTelemetry.Rebuild(() => document.ForceRebuild3(false)) || document.Extension.NeedsRebuild2 != 0)
                 throw new NativeOperationException("FEATURE_REBUILD_FAILED", "Extrusion datum outputs could not be rebuilt.");
             return new(true, null, "Native extrusion created and rebuilt.", operation.SemanticId, true, true);
         }

@@ -32,15 +32,15 @@ public abstract class NativeFeatureHandler : IOperationBackendHandler
                 throw new NativeOperationException(FailureCodes.PreconditionFailed, "A managed construction Part outside sketch editing with a new semantic ID is required.");
             doc.ClearSelection2(true);
             context.BindOperationInputs(operation);
-            ValidateInputs(context, operation);
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) ValidateInputs(context, operation);
             started = true;
             if (CreateNative(context, operation) is not IFeature feature)
                 throw new NativeOperationException("GEOMETRY_IMPOSSIBLE", "Native feature creation returned no feature.");
-            rebuilt = doc.ForceRebuild3(false);
+            rebuilt = ExecutionTelemetry.Rebuild(() => doc.ForceRebuild3(false));
             var error = feature.GetErrorCode2(out var warning);
             if (!rebuilt || error != 0 || warning || doc.Extension.NeedsRebuild2 != 0)
             { rebuilt = false; throw new NativeOperationException("FEATURE_REBUILD_FAILED", "Native feature status or rebuild failed."); }
-            ValidateFeature(context, operation, feature);
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) ValidateFeature(context, operation, feature);
             Register(context, operation, feature);
             return new(true, null, "Native feature created, rebuilt and checked against operation parameters.", operation.SemanticId, true, true);
         }

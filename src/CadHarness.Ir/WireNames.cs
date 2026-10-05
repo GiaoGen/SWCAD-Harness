@@ -20,7 +20,7 @@ public static class WireNames
     }
 }
 
-internal static class Identifiers
+public static class Identifiers
 {
     internal const string SegmentPattern = "[a-z][a-z0-9]*(?:_[a-z0-9]+)*";
     internal const string IdPattern = "^" + SegmentPattern + "$";
@@ -34,6 +34,6 @@ internal static class Identifiers
     internal static bool IsSafe(string? value, bool reference = false) => value is not null &&
         value.Length <= 128 && Regex.IsMatch(value, reference ? ReferencePattern : IdPattern, RegexOptions.CultureInvariant) &&
         !NativeName.IsMatch(value);
-    internal static string SchemaPattern(bool reference) => "^(?!.*" + NativeName + ")" +
+    public static string SchemaPattern(bool reference) => "^(?!.*" + NativeName + ")" +
         (reference ? ReferencePattern[1..] : IdPattern[1..]);
 }

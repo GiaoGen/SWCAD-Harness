@@ -123,6 +123,7 @@ public sealed class SolidWorksPlanningRuntime : IPlanningRuntime
 
     public ProgramValidationResult Preflight(CadProgram program)
     {
+        using var measured = ExecutionTelemetry.Measure(ExecutionPhase.Validation);
         var capabilityCheck = Capabilities.Validate(program);
         if (!capabilityCheck.IsValid) return capabilityCheck;
         try
