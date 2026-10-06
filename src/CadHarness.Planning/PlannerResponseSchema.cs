@@ -58,7 +58,10 @@ public static class PlannerResponseSchema
                 alternatives.Add(Closed(shape));
             }
         }
-        object relationItems = catalog.Relations.Count == 0 ? new { type = "object", properties = new { }, additionalProperties = false, required = Array.Empty<string>() } :
+        // maxItems=0 makes items unreachable. Use a legal scalar schema so
+        // providers can compile it without accepting an empty-object grammar.
+        // This does not advertise relations or allow a nonempty edit array.
+        object relationItems = catalog.Relations.Count == 0 ? new { type = "string" } :
             new { anyOf = catalog.Relations.Select(r => Closed(new()
             { ["kind"] = Constant(WireNames.Of(r)), ["subject"] = Identifier(), ["reference"] = Identifier(true) })).ToArray() };
         object program = alternatives.Count == 0 ? new { type = "null" } : Closed(new()

@@ -16,5 +16,9 @@ public sealed class DeepSeekPlanSource : IStructuredPlanSource
     private readonly OpenAiPlanSource source;
     public DeepSeekPlanSource(HttpClient client, string model, string apiKey, int maximumOutputTokens = 8192, int timeoutSeconds = 120) =>
         source = new(client, new(model, apiKey, Endpoint, maximumOutputTokens, timeoutSeconds, temperature: 0));
-    public Task<StructuredPlanResponse> GenerateAsync(PlannerPrompt prompt, CancellationToken cancellationToken) => source.GenerateAsync(prompt, cancellationToken);
+    public Task<StructuredPlanResponse> GenerateAsync(PlannerPrompt prompt, CancellationToken cancellationToken)
+    {
+        ProviderSchemaCompatibility.RequireCompatible(prompt.ResponseSchemaJson);
+        return source.GenerateAsync(prompt, cancellationToken);
+    }
 }
