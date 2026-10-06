@@ -28,8 +28,8 @@ internal static class ConstructionPrograms
         }
         if (prior is not null)
             foreach (var before in prior.Operations)
-                if (json.Serialize(new("0.2", new[] { before }, Array.Empty<DesignRelation>())) !=
-                    json.Serialize(new("0.2", new[] { plan.Program.Operations.Single(o => o.SemanticId == before.SemanticId) }, Array.Empty<DesignRelation>())))
+                if (!OperationSemanticComparer.EqualsDefinition(before,
+                    plan.Program.Operations.Single(o => o.SemanticId == before.SemanticId)))
                     throw new StateException(FailureCodes.OperationUnsupported, "Construction extensions cannot move or edit existing operation definitions.");
         return plan;
     }
