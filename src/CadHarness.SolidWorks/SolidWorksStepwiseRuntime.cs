@@ -54,7 +54,19 @@ public sealed class SolidWorksStepwiseRuntime : IPlanningRuntime
                 !StateRelationData.Dependencies(this.state).ToHashSet().SetEquals(new DesignRelationEngine().Solve(this.prior).Dependencies.Edges))
                 throw new StateException("STALE_REFERENCE", "Stepwise observation differs from the managed program.");
         }
+        // All fields are derived solely from this defensive committed snapshot.
+        // They contain no expected task, next operation or future program.
+        var operations = this.prior?.Operations ?? Array.Empty<OperationNode>();
+        var features = this.state?.Features ?? Array.Empty<FeatureNode>();
+        var entities = this.state?.Entities ?? Array.Empty<SemanticEntityNode>();
+        var parameters = this.state?.Parameters ?? Array.Empty<ParameterNode>();
+        var healthyOwners = features.Where(f => f.ReferenceHealth == ReferenceHealth.Healthy).Select(f => f.SemanticId).ToHashSet(StringComparer.Ordinal);
         ModelContextJson = JsonSerializer.Serialize(new { program = this.prior is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(new CadProgramJson().Serialize(this.prior)),
+            committedOperationIds = operations.Select(o => o.Id),
+            committedSemanticIds = features.Select(f => f.SemanticId).Concat(entities.Select(e => e.SemanticId)).Concat(parameters.Select(p => p.SemanticId)).Distinct(StringComparer.Ordinal),
+            committedOperations = operations.Select(o => new { id = o.Id, semanticId = o.SemanticId, kind = WireNames.Of(o.Kind) }),
+            healthySemanticOutputs = entities.Where(e => e.ReferenceHealth == ReferenceHealth.Healthy && healthyOwners.Contains(e.OwnerFeatureSemanticId))
+                .Select(e => new { semanticId = e.SemanticId, type = WireNames.Of(e.Type), owner = e.OwnerFeatureSemanticId }),
             revision = this.state?.Revision ?? 0, entities = this.state?.Entities.Select(e => new { semanticId = e.SemanticId, type = WireNames.Of(e.Type),
                 owner = e.OwnerFeatureSemanticId, health = e.ReferenceHealth.ToString(), geometry = e.Geometry }) });
     }
