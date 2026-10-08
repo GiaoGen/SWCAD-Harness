@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SWCAD-Harness Playground</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+<body>
+<header><div><strong>SWCAD-Harness</strong><span class="label">PLAYGROUND / DEBUG CONSOLE V0</span></div><button id="theme" class="quiet">Light / Dark</button></header>
+<div id="status" class="statusbar" aria-live="polite"></div>
+<main>
+<aside class="controls">
+<section><h2>01 · Provider configuration</h2><form id="config">
+<label>Provider<select id="provider"><option value="deepseek">DeepSeek</option><option value="responses">Responses compatible</option></select></label>
+<label>Endpoint<input id="endpoint" type="url" value="https://api.deepseek.com/responses" required></label>
+<label>Requested model<input id="model" value="deepseek-chat" required maxlength="128"></label>
+<label>Credential source<select id="credential"><option value="">Enter API key</option><option>DEEPSEEK_API_KEY</option><option>OPENAI_API_KEY</option><option>CAD_HARNESS_LLM_API_KEY</option></select></label>
+<label>API key<input id="key" type="password" autocomplete="off" maxlength="4096" placeholder="Server memory only"></label>
+<div class="pair"><label>Timeout · seconds<input id="timeout" type="number" value="120" min="1" max="300"></label><label>Max output tokens<input id="tokens" type="number" value="8192" min="256" max="32768"></label></div>
+<button type="submit" data-action>Apply settings</button></form><div class="buttons"><button id="test" disabled data-action>Test connection</button><button id="clear" data-action class="quiet">Clear API key</button></div>
+<p class="hint">Credentials stay in this host process. Closing the host clears them. Test Connection makes one provider call; no CAD action.</p></section>
+<section><h2>02 · Create intent</h2><label>Natural language intent<textarea id="intent" rows="5" maxlength="8192" placeholder="Create an 80 x 50 x 10 mm rectangular plate."></textarea></label><button id="generate" disabled data-action class="primary">Generate Plan</button>
+<p class="hint">Planning includes strict IR, capability and pure preflight checks. Explicit preflight approval is still required below.</p></section>
+<section><h2>03 · Manual execution</h2><button id="preflight" disabled data-action>Run Preflight</button><button id="connect" data-action>Connect SOLIDWORKS</button><label class="check"><input id="autoclose" type="checkbox">Auto-close test Part after validation</label><button id="execute" disabled data-action class="primary">Execute in SOLIDWORKS…</button><button id="close" disabled data-action class="quiet">Close Test Part</button><p class="hint">Inspect mode · one owned Part maximum. No automatic follow-up or retries.</p></section>
+<section><h2>04 · Edit live model</h2><label>Edit intent<textarea id="editIntent" rows="3" maxlength="8192" placeholder="Change the plate thickness to 10 mm."></textarea></label><button id="editGenerate" disabled data-action>Generate Edit Plan</button><button id="editPreflight" disabled data-action>Preflight Edit</button><button id="editExecute" disabled data-action class="primary">Execute Edit…</button><p class="hint">Requires healthy committed state and the exact current revision.</p></section>
+</aside>
+<article class="inspector">
+<section class="pipeline"><h2>Pipeline</h2><div class="stages"><span>Intent</span><b>›</b><span>LLM / strict IR</span><b>›</b><span>Capability</span><b>›</b><span>Preflight</span><b>›</b><span>Native</span><b>›</b><span>Rebuild</span><b>›</b><span>Validation</span><b>›</b><span>Commit</span></div><p id="pipelineSummary" class="hint">Waiting for an intent. Every native action requires manual confirmation.</p></section>
+<section><div class="sectionhead"><h2>Plan Inspector</h2><span id="planBadge" class="tag">NO PLAN</span></div><nav class="tabs" aria-label="Plan views"><button data-tab="visual" class="selected">Visual</button><button data-tab="raw">Raw IR</button><button data-tab="relations">Relations</button><button data-tab="capabilities">Capabilities</button><button data-tab="planner">Planner Details</button></nav>
+<div id="visual" class="tab active"><div class="empty">Your typed operations will appear here.<br>Generate → inspect → preflight → confirm execute.</div></div>
+<div id="raw" class="tab"><div class="buttons"><button id="copy" class="quiet">Copy JSON</button><button id="download" class="quiet">Download IR</button></div><pre id="rawJson">No plan</pre></div>
+<div id="relations" class="tab"><div class="empty">No relations yet.</div></div>
+<div id="capabilities" class="tab"><p class="hint">RuntimeCapabilityCatalog ≠ Full OperationRegistry. This is the actual projection received by the planner.</p><div id="capabilityTree"></div></div>
+<div id="planner" class="tab"><div id="plannerTree" class="empty">No provider call yet.</div></div></section>
+<section><h2>Preflight / Execution</h2><div id="result" aria-live="polite" class="empty">No action performed.</div></section>
+<section><div class="sectionhead"><h2>Event Log</h2><button id="export" data-action class="quiet">Export Session Report</button></div><div id="events" class="eventlog">No events.</div></section>
+</article>
+<aside class="state"><section><div class="sectionhead"><h2>CADState</h2><span id="revision" class="tag">REV —</span></div><p class="hint">Committed state · semantic IDs and persistent references. Native COM objects never cross this boundary.</p><div id="stateTree" class="empty">No committed live state.</div></section></aside>
+</main>
+<dialog id="confirmation"><h2 id="confirmTitle">Execute one test Part</h2><p id="confirmDescription"></p><p class="hint">No automatic follow-up execution will occur. Review the current plan and preflight before continuing.</p><div class="buttons"><button id="cancelConfirm" class="quiet">Cancel</button><button id="confirmExecute" disabled class="primary">Execute One Part</button></div></dialog>
+<div id="toast" role="status"></div>
+</body></html>
+

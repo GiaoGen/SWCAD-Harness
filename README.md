@@ -1,5 +1,11 @@
 # CAD Harness v0.2 — Milestones 0–9 + M10 implementation
 
+## Playground / Debug Console V0
+
+本地开发者 UI：` .\scripts\start-playground.ps1 `，打开 `http://127.0.0.1:5186/`。Generate Plan、显式 Preflight、确认 Execute 分离；默认一个 owned Part。开发测试不启动 SOLIDWORKS，0 native Parts。
+
+见 [使用指南](docs/PLAYGROUND-USER-GUIDE.md)、[架构说明](docs/PLAYGROUND-ARCHITECTURE.md)。纯/mock 集成测试：`.\scripts\test-playground.ps1`。下方历史里程碑记录保持原样。
+
 M0 工程设施已补齐：`CadHarness.sln`、固定版本 .NET 8 SDK、独立构建与 Bootstrap 运行器。标准 SDK/MSBuild 构建已通过；之前仅验证 Roslyn 编译的限制已解除。工具链安装在工作区，未修改系统安装。
 
 ```powershell
