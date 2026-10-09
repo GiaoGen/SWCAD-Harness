@@ -55,7 +55,7 @@ internal static class AcceptanceFiles
         Program.Check(plan.SchemaVersion=="0.3"&&plan.Inputs.Select(x=>x.Id).Distinct().Count()==plan.Inputs.Count&&plan.Scenarios.Select(x=>x.Id).Distinct().Count()==plan.Scenarios.Count,"Invalid/duplicate schedule identities.");
         foreach(var i in plan.Inputs)
         {Program.Check(i.Width>0&&i.Height>0&&i.Depth>0&&i.Holes.Count==3&&i.Holes.Select(h=>h.Label).Distinct().Count()==3&&i.Pattern.Count>=2&&i.Pattern.Spacing>0&&i.References.Count>=5,"Incomplete independent input specification.");Verify(i.Source);}
-        Program.Check(plan.Scenarios.Sum(s=>s.MaximumOpens)<=18&&plan.Scenarios.All(s=>s.MaximumOpens>0&&plan.Inputs.Any(i=>i.Id==s.Input)),"Schedule exceeds remaining 18 authorized opens.");
+        Program.Check(plan.Scenarios.All(s=>s.MaximumOpens>0&&plan.Inputs.Any(i=>i.Id==s.Input)),"Invalid scheduled open allowance/input.");
         foreach(var s in plan.Scenarios)
         {
             var parent=Path.GetDirectoryName(plan.Authorization)!;var full=Path.GetFullPath(s.Package);
@@ -63,5 +63,13 @@ internal static class AcceptanceFiles
             Program.Check(relative.Length==3&&System.Text.RegularExpressions.Regex.IsMatch(relative[0],"^acceptance-v[0-9]+$")&&relative[1]=="packages"&&!plan.Inputs.Any(i=>i.Source.Path.StartsWith(full+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)),"Scenario must own a separate disposable acceptance package.");
             if(s.PreviousPackage is not null)Program.Check(plan.Scenarios.Any(p=>p.Id==s.PreviousPackage&&p.Package==s.Package),"Missing scheduled package predecessor.");
         }
+    }
+    internal static void RequireBudget(AcceptanceSchedule plan, NativeTests.Budget budget, string? executionRun = null, string? pendingSlot = null)
+    {
+        Program.Check(budget.Milestone==14&&budget.MaximumNewParts==0&&budget.OwnedTitles.Count==0&&
+            budget.OpenAttempts>=0&&budget.OpenAttempts<=budget.MaximumOpenCycles,"Unresolved or invalid current budget.");
+        var run=executionRun??plan.Run;
+        Program.Check(plan.Scenarios.Where(s=>s.Id==pendingSlot||!budget.AttemptedSteps.Contains(run+"/"+s.Id)).Sum(s=>(long)s.MaximumOpens)<=budget.MaximumOpenCycles-budget.OpenAttempts,
+            "Complete schedule exceeds latest cumulative remaining budget; replan before any native execution.");
     }
 }

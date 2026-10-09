@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using CadHarness.Ir;
 using CadHarness.Ir.V03;
+using CadHarness.SolidWorks;
 using CadHarness.State;
 using CadHarness.State.V03;
 
@@ -14,7 +15,68 @@ internal static class PureTests
     internal static int Run(string root)
     {
         output = Path.Combine(root, "artifacts", "milestone14", "pure", DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff")); Directory.CreateDirectory(output);
+        Test("completed native step survives missing final report",()=>
+        {
+            var directory=Path.Combine(output,"journal");var journal=new StepJournal(directory,"test/step",new{source="pure"},()=>new{opens=14,closed=14});
+            journal.Add(new{phase="setter-return",reference="cHVyZQ==",before=10,readback=12,setter=new ObservedSetterResult("mock enum",0,true)});
+            using var record=System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,"00001.json")));
+            Program.Check(record.RootElement.GetProperty("budget").GetProperty("opens").GetInt32()==14&&
+                record.RootElement.GetProperty("evidence").GetProperty("setter").GetProperty("ReturnCode").GetInt32()==0&&
+                !File.Exists(Path.Combine(directory,"result.json")),"Step depends on controller finalization.");
+        });
+        Test("step journal never overwrites an interrupted run",()=>
+        {
+            var directory=Path.Combine(output,"journal_collision");var first=new StepJournal(directory,"test",new{},()=>new{});first.Add(new{value=1});
+            var path=Path.Combine(directory,"00001.json");var original=ManagedRevisionStore.Hash(path);
+            try {new StepJournal(directory,"test",new{},()=>new{}).Add(new{value=2});}
+            catch(IOException){Program.Check(ManagedRevisionStore.Hash(path)==original,"Evidence overwritten.");return;}
+            throw new InvalidOperationException("Duplicate evidence write accepted.");
+        });
+        Test("step evidence sink failure does not mark step complete",()=>
+        {
+            var path=Path.Combine(output,"journal_not_directory");File.WriteAllText(path,"pure mock");var journal=new StepJournal(path,"test",new{},()=>new{});
+            try{journal.Add(new{});}catch(IOException){Program.Check(journal.Count==0,"Undurable step marked complete.");return;}
+            throw new InvalidOperationException("Sink failure ignored.");
+        });
+        Test("remaining schedule uses latest 14 of 27 not historic 2 of 12",()=>
+        {
+            var plan=new AcceptanceSchedule("0.3","test","unused",Array.Empty<OracleInput>(),new[]{new AcceptanceScenario("core","candidate","core","unused",null,13,false)});
+            var budget=new NativeTests.Budget{OpenAttempts=14,MaximumOpenCycles=27};AcceptanceFiles.RequireBudget(plan,budget);
+            try{AcceptanceFiles.RequireBudget(plan with{Scenarios=new[]{plan.Scenarios[0] with{MaximumOpens=14}}},budget);}catch(InvalidOperationException){return;}
+            throw new InvalidOperationException("Schedule exceeds remaining budget.");
+        });
+        Test("completed slots are not charged twice but remaining slots must fit",()=>
+        {
+            var plan=new AcceptanceSchedule("0.3","test","unused",Array.Empty<OracleInput>(),new[]{new AcceptanceScenario("done","candidate","core","unused",null,9,false),new AcceptanceScenario("next","candidate","core","unused",null,4,false)});
+            var budget=new NativeTests.Budget{OpenAttempts=23,MaximumOpenCycles=27,AttemptedSteps=new(){"test/done"}};AcceptanceFiles.RequireBudget(plan,budget);
+            budget.OpenAttempts=24;try{AcceptanceFiles.RequireBudget(plan,budget);}catch(InvalidOperationException){return;}throw new InvalidOperationException("Unattempted schedule overbooked.");
+        });
+        Test("controller registration does not erase pending slot from budget check",()=>
+        {
+            var plan=new AcceptanceSchedule("0.3","test","unused",Array.Empty<OracleInput>(),new[]{new AcceptanceScenario("pending","candidate","core","unused",null,9,false),new AcceptanceScenario("next","candidate","core","unused",null,5,false)});
+            var budget=new NativeTests.Budget{OpenAttempts=14,MaximumOpenCycles=27,AttemptedSteps=new(){"test/pending"}};
+            try{AcceptanceFiles.RequireBudget(plan,budget,"test","pending");}catch(InvalidOperationException){return;}throw new InvalidOperationException("Pending registered slot escaped full-plan budget.");
+        });
+        Test("unresolved ownership refuses schedule before COM",()=>
+        {
+            var plan=new AcceptanceSchedule("0.3","test","unused",Array.Empty<OracleInput>(),Array.Empty<AcceptanceScenario>());
+            try{AcceptanceFiles.RequireBudget(plan,new NativeTests.Budget{OwnedTitles=new(){"owned"}});}catch(InvalidOperationException){return;}throw new InvalidOperationException("Owned document ignored.");
+        });
+        Test("rejected controller releases its ledger lease without native calls",()=>
+        {
+            var directory=Path.Combine(output,"rejected_lease");Directory.CreateDirectory(directory);
+            Program.WriteNew(Path.Combine(directory,"native-budget.json"),new NativeTests.Budget{OwnedTitles=new(){"owned"}});
+            Refuse(()=>new NativeTests.Ledger(directory,null!,"never-open").Dispose());
+            using var lease=new FileStream(Path.Combine(directory,"native-budget.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+            var budget=System.Text.Json.JsonSerializer.Deserialize<NativeTests.Budget>(File.ReadAllText(Path.Combine(directory,"native-budget.json")))!;
+            Program.Check(budget.OpenAttempts==0&&budget.OwnedTitles.Count==1&&budget.AttemptedSteps.Count==0,"Rejected controller changed history.");
+        });
         Test("origin sketch is not a consumed circular profile", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 1, "Origin incorrectly counted as second profile."));
+        Test("candidate circle contract describes driver setter without granting qualification",()=>
+        {
+            var row=NativeQualificationCandidates.Rows.Single(r=>r.Parameter==ParameterKey.HoleDiameter);
+            Program.Check(!row.Qualified&&row.WriteContract.Contains("SetSystemValue3",StringComparison.Ordinal)&&!row.WriteContract.Contains("SetRadius",StringComparison.Ordinal),"Candidate descriptor diverges from observed driver handler.");
+        });
         Test("real duplicate profiles remain ambiguous", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 2, "Duplicate profiles silently accepted."));
         Test("unknown and 3D profile types remain unsupported", () => Program.Check(!ExternalProfileOwnership.IsConsumingProfile("3DProfileFeature") && !ExternalProfileOwnership.IsConsumingProfile("unrecognized"), "Subtype safety relaxed."));
         Test("production gate requires native qualification, not candidate code", () => { using var p = Package("production_gate"); Refuse(() => NativeQualificationCandidates.RequireExecutable(p.CurrentExternal.Observation,"hole_a",ParameterKey.HoleDiameter)); Program.Check(p.Mutations==0,"candidate advertised"); });

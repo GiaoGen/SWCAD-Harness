@@ -10,6 +10,8 @@ internal static class Program
         try
         {
             if (args[1] == "--pure") return PureTests.Run(args[0]);
+            if (args[1] == "--reconcile-ownership") return RecoveryAudit.Run(args[0],args[2]);
+            if (args[1] == "--assess-recovery") return RecoveryAudit.Assess(args[0],args[2]);
             if (args[1] == "--prepare-acceptance") return AcceptancePreparation.Run(args[0],args[2]);
             if (args[1] == "--freeze-stage") return AcceptancePreparation.Stage(args[0],args[2],args[3]);
             if (args[1] == "--replan-acceptance") return AcceptancePreparation.Replan(args[0],args[2],args[3]);

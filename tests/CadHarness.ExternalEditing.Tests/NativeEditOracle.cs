@@ -26,8 +26,15 @@ internal static class NativeEditOracle
         Program.Check(segments.Length==1&&segments[0] is ISketchArc arc&&arc.IsCircle()==1,"Oracle circle profile unsupported.");
         return ((ISketchArc)segments[0]).GetRadius()*2000;
     }
-    internal static object Read(IModelDoc2 doc,OracleInput spec)
+    internal static object Read(IModelDoc2 doc,OracleInput spec,Action<object>? measurement=null)
     {
+        void Compare(string label,double actual,double expected,double tolerance)
+        {
+            measurement?.Invoke(new{label,actual,expected,tolerance,difference=actual-expected,
+                passed=double.IsFinite(actual)&&Math.Abs(actual-expected)<=tolerance});
+            Near(actual,expected,tolerance);
+        }
+        measurement?.Invoke(new{phase="oracle-start",spec});
         Program.Check(doc.ConfigurationManager.ActiveConfiguration.Name==spec.Configuration&&doc.GetConfigurationCount()==1,"Oracle configuration mismatch.");
         Program.Check(doc.GetEquationMgr() is IEquationMgr equations&&equations.GetCount()==spec.EquationCount,"Oracle equation history differs.");
         var facts=new List<object>();
@@ -40,18 +47,19 @@ internal static class NativeEditOracle
             var parents=Items<IFeature>(f.GetParents()).Select(p=>Convert.ToBase64String((byte[])doc.Extension.GetPersistReference3(p))).ToArray();
             if(pair.Key=="pattern")Program.Check(parents.Contains(spec.References[spec.Pattern.Seed]),"Oracle pattern seed parent differs.");
             if(pair.Key is "hole_b" or "hole_c")Program.Check(!parents.Contains(spec.References[pair.Key=="hole_b"?"hole_c":"hole_b"]),"Independent targets became dependent.");
-            facts.Add(new{label=pair.Key,reference=pair.Value,name=f.Name,nativeType=f.GetTypeName2(),underlyingType=f.GetTypeName(),parents});
+            var fact=new{label=pair.Key,reference=pair.Value,name=f.Name,nativeType=f.GetTypeName2(),underlyingType=f.GetTypeName(),parents};
+            facts.Add(fact);measurement?.Invoke(fact);
         }
-        Near(Value(doc,spec,"host",CadHarness.Ir.V03.ParameterKey.ExtrusionDepth),spec.Depth,1e-6);
+        Compare("host.depth",Value(doc,spec,"host",CadHarness.Ir.V03.ParameterKey.ExtrusionDepth),spec.Depth,1e-6);
         foreach(var h in spec.Holes)
         {
             var data=(IExtrudeFeatureData2)Resolve(doc,spec.References[h.Label]).GetDefinition();
             Program.Check(data.GetEndCondition(true)==1&&!data.BothDirections,"Oracle cut must remain single direction through-all.");
-            Near(Value(doc,spec,h.Label,CadHarness.Ir.V03.ParameterKey.HoleDiameter),h.Diameter,1e-6);
+            Compare(h.Label+".diameter",Value(doc,spec,h.Label,CadHarness.Ir.V03.ParameterKey.HoleDiameter),h.Diameter,1e-6);
         }
         var pattern=(ILinearPatternFeatureData)Resolve(doc,spec.References[spec.Pattern.Label]).GetDefinition();
         Program.Check(pattern.D1TotalInstances==spec.Pattern.Count&&!pattern.IsDirection2Specified()&&!pattern.GeometryPattern&&pattern.GetSkippedItemCount()==0,"Oracle pattern definition differs.");
-        Near(pattern.D1Spacing*1000,spec.Pattern.Spacing,1e-6);
+        Compare("pattern.spacing",pattern.D1Spacing*1000,spec.Pattern.Spacing,1e-6);
         var bodies=Items<IBody2>(((IPartDoc)doc).GetBodies2((int)swBodyType_e.swAllBodies,false)).ToArray();
         Program.Check(bodies.Length==1&&bodies[0].GetType()==(int)swBodyType_e.swSolidBody,"Oracle single solid required.");
         var instances=spec.Holes.Select(h=>(h.X,h.Y,h.Diameter,Depth:spec.Depth)).ToList();
@@ -59,9 +67,9 @@ internal static class NativeEditOracle
         for(var i=1;i<spec.Pattern.Count;i++)instances.Add((seed.X+i*spec.Pattern.Spacing,seed.Y,seed.Diameter,spec.Depth));
         if(spec.BlindDepth>0)instances.Add((spec.BlindX,spec.BlindY,spec.BlindDiameter,spec.BlindDepth));
         var expectedVolume=spec.Width*spec.Height*spec.Depth-instances.Sum(h=>Math.PI*h.Diameter*h.Diameter/4*h.Depth);
-        var volume=((double[])bodies[0].GetMassProperties(1))[3]*1e9;Near(volume,expectedVolume,Math.Max(0.01,expectedVolume*1e-7));
+        var volume=((double[])bodies[0].GetMassProperties(1))[3]*1e9;Compare("body.volume",volume,expectedVolume,Math.Max(0.01,expectedVolume*1e-7));
         var bounds=(double[])bodies[0].GetBodyBox();var expectedBounds=new[]{-spec.Width/2,-spec.Height/2,0,spec.Width/2,spec.Height/2,spec.Depth};
-        for(var i=0;i<6;i++)Near(bounds[i]*1000,expectedBounds[i],0.01);
+        for(var i=0;i<6;i++)Compare("body.bounds."+i,bounds[i]*1000,expectedBounds[i],0.01);
         var faces=Items<IFace2>(bodies[0].GetFaces()).ToArray();
         Program.Check(faces.All(f=>f.GetSurface() is ISurface s&&(s.IsPlane()||s.IsCylinder())),"Oracle unexpected face surface.");
         var cylinders=faces.Where(f=>((ISurface)f.GetSurface()).IsCylinder()).ToArray();
@@ -71,9 +79,9 @@ internal static class NativeEditOracle
         {
             var matches=cylinders.Select((f,i)=>(f,i,p:(double[])((ISurface)f.GetSurface()).CylinderParams)).Where(c=>Math.Abs(c.p[0]*1000-expected.X)<0.001&&Math.Abs(c.p[1]*1000-expected.Y)<0.001).ToArray();
             Program.Check(matches.Length==1&&used.Add(matches[0].i),"Oracle missing/ambiguous cylinder center.");var c=matches[0];
-            Near(c.p[6]*2000,expected.Diameter,0.001);Near(Math.Abs(c.p[5]),1,1e-8);
+            Compare($"cylinder.{expected.X:R}.{expected.Y:R}.diameter",c.p[6]*2000,expected.Diameter,0.001);Compare("cylinder.axis",Math.Abs(c.p[5]),1,1e-8);
             var levels=Items<IEdge>(c.f.GetEdges()).Select(e=>(ICurve)e.GetCurve()).Where(e=>e.IsCircle()).Select(e=>((double[])e.CircleParams)[2]*1000).OrderBy(z=>z).ToArray();
-            Program.Check(levels.Length==2,"Oracle circular boundaries missing.");Near(levels[0],0,0.001);Near(levels[1],expected.Depth,0.001);
+            Program.Check(levels.Length==2,"Oracle circular boundaries missing.");Compare("cylinder.bottom",levels[0],0,0.001);Compare("cylinder.top",levels[1],expected.Depth,0.001);
             measurements.Add(new{x=expected.X,y=expected.Y,diameter=c.p[6]*2000,levels});
         }
         return new{kind="Independent M14 official API measurement; not Factory Reader or production analytic oracle",configuration=spec.Configuration,features=facts,volume,expectedVolume,boundsMm=bounds.Select(x=>x*1000),cylinders=measurements};

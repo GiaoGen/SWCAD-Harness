@@ -1,6 +1,6 @@
 # M14 A1 Read-Only Diagnosis
 
-Status: PARTIAL; native verification explicitly paused by the user. No new native opens after that request.
+Current A1 status: PARTIAL, compatibility unaccepted. The historical diagnosis below retains the earlier pause and 2/12 ledger snapshot. Current M14 recovery accounting is 14/27 opens, 14 closes and no unresolved ownership; see [recovery report](milestone-14-recovery-completion.md). No new A1 native intake/edit was performed during recovery. Its old failure is not replaced by Factory development results.
 
 ## Evidence Boundary
 

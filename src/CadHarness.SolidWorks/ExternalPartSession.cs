@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -17,6 +18,10 @@ public sealed record ExternalPartOpenResult(ReopenStatus Status, string? Failure
     ExternalPartSession? Session, ObservedModel? Observation);
 public sealed record ExternalEditResult(MutationResult Transaction, int Checkpoints, System.Collections.Generic.IReadOnlyList<string> PartialNativeSteps,
     ReopenStatus Status, bool SourcePreserved);
+public sealed record ExternalNativeEditEvidence(string Phase, DateTime Utc, long Revision,
+    string? Target, string? NativeReference, ParameterKey? Parameter, double? BeforeValue,
+    double? RequestedValue, double? Readback, ObservedSetterResult? Setter, bool? Rebuilt,
+    double ElapsedMilliseconds, int? ExceptionHResult);
 
 public sealed class ExternalPartSession : IExternalEditSession, IDisposable
 {
@@ -28,6 +33,9 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
     private readonly SavedNativeReadProof proof = new();
     private IModelDoc2? owned;
     private bool disposed;
+    private readonly List<ExternalPreparedEdit> pendingReadbacks = new();
+    // An evidence sink failure propagates through the existing transaction rollback boundary.
+    public Action<ExternalNativeEditEvidence>? EvidenceSink { get; set; }
     public ManagedRevisionStore Store { get; }
     public ExternalEditState CurrentExternal { get; private set; } = null!;
     public ReopenStatus Status { get; private set; } = ReopenStatus.Closed;
@@ -129,11 +137,40 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
         Check(); Guard(); proof.Invalidate();
         var feature = ExternalNativeQualification.Resolve(owned!, prepared.Feature);
         var handler = ParameterMutationRegistry.Default.GetObserved(prepared.Feature.Subtype, prepared.Edit.Parameter);
-        ExternalEditPlanning.Near(handler.ReadObserved(owned!, feature, prepared.Edit.Parameter), prepared.Edit.ExpectedOldValue, prepared.Edit.Parameter);
-        handler.ApplyObserved(owned!, feature, prepared.Edit);
-        ExternalEditPlanning.Near(handler.ReadObserved(owned!, ExternalNativeQualification.Resolve(owned!, prepared.Feature), prepared.Edit.Parameter), prepared.Edit.Value, prepared.Edit.Parameter);
+        var before = handler.ReadObserved(owned!, feature, prepared.Edit.Parameter);
+        ExternalEditPlanning.Near(before, prepared.Edit.ExpectedOldValue, prepared.Edit.Parameter);
+        Evidence("setter-start", prepared, before: before);
+        var timer = Stopwatch.StartNew();
+        ObservedSetterResult result;
+        try { result = handler.ApplyObserved(owned!, feature, prepared.Edit); }
+        catch (Exception error) { Evidence("setter-exception", prepared, before: before, elapsed: timer.Elapsed.TotalMilliseconds, hresult: error.HResult); throw; }
+        Evidence("setter-return", prepared, before: before, setter: result, elapsed: timer.Elapsed.TotalMilliseconds);
+        if (!result.Succeeded) throw new StateException("PARAMETER_NOT_APPLIED", result.Api + " failed: " + result.ReturnCode);
+        var readback = handler.ReadObserved(owned!, ExternalNativeQualification.Resolve(owned!, prepared.Feature), prepared.Edit.Parameter);
+        Evidence("setter-readback", prepared, before: before, readback: readback, setter: result, elapsed: timer.Elapsed.TotalMilliseconds);
+        ExternalEditPlanning.Near(readback, prepared.Edit.Value, prepared.Edit.Parameter);
+        pendingReadbacks.Add(prepared);
     }
-    public bool RebuildNative() { Check(); Guard(); return owned is not null && ExecutionTelemetry.Rebuild(() => owned.ForceRebuild3(false)); }
+    public bool RebuildNative()
+    {
+        Check(); Guard(); Evidence("rebuild-start"); var timer = Stopwatch.StartNew(); bool result;
+        try { result = owned is not null && ExecutionTelemetry.Rebuild(() => owned.ForceRebuild3(false)); }
+        catch (Exception error) { Evidence("rebuild-exception", elapsed: timer.Elapsed.TotalMilliseconds, hresult: error.HResult); throw; }
+        Evidence("rebuild-return", rebuilt: result, elapsed: timer.Elapsed.TotalMilliseconds);
+        if (result && EvidenceSink is not null)
+            foreach (var prepared in pendingReadbacks)
+            {
+                var feature = ExternalNativeQualification.Resolve(owned!, prepared.Feature);
+                var value = ParameterMutationRegistry.Default.GetObserved(prepared.Feature.Subtype, prepared.Edit.Parameter).ReadObserved(owned!, feature, prepared.Edit.Parameter);
+                Evidence("rebuild-readback", prepared, readback: value, rebuilt: true, elapsed: timer.Elapsed.TotalMilliseconds);
+            }
+        return result;
+    }
+    private void Evidence(string phase, ExternalPreparedEdit? prepared = null, double? before = null,
+        double? readback = null, ObservedSetterResult? setter = null, bool? rebuilt = null, double elapsed = 0, int? hresult = null) =>
+        EvidenceSink?.Invoke(new(phase, DateTime.UtcNow, CurrentExternal.Observation.Selection.ExpectedRevision,
+            prepared?.Edit.Target, prepared?.Feature.NativeReference?.Base64, prepared?.Edit.Parameter,
+            before, prepared?.Edit.Value, readback, setter, rebuilt, elapsed, hresult));
     public void Stage(ExternalEditState state) { Check(); CurrentExternal = state; }
     public void SaveNative()
     {
@@ -149,6 +186,7 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
         var measured = ExternalObservation.Capture(selection, new ExternalPartInspection.NativeSource(owned, true)).Model;
         CurrentExternal = CurrentExternal with { Observation = ExternalEditPlanning.ReconcileSavedObservation(CurrentExternal.Observation, measured) };
         ExternalEditPlanning.Validate(CurrentExternal);
+        pendingReadbacks.Clear();
     }
     public void VerifySavedExternal(ExternalEditState expected)
     {
@@ -163,7 +201,7 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
     }
     public void Restore(ManagedRecoveryInspection checkpoint)
     {
-        Check(); CloseOwned(); Store.RestoreWorkingCopy(checkpoint);
+        Check(); pendingReadbacks.Clear(); CloseOwned(); Store.RestoreWorkingCopy(checkpoint);
         CurrentExternal = checkpoint.Revision!.External ?? throw new StateException(V03FailureCodes.ModeMismatch, "No external batch-start checkpoint.");
         editFault?.Invoke(ExternalEditFault.Reopen); OpenOwned(CurrentExternal.Observation.Selection.ConfigurationName);
         VerifyLive(CurrentExternal); Store.CompleteRecovery(checkpoint);

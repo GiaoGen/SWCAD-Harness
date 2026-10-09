@@ -2,7 +2,13 @@
 
 PRD: `SWCAD_Harness_v0.3_PRD.md`, v0.3-draft-2, sections 8, 9 and Milestone 14.
 
-Status: **PARTIAL**. Native verification paused at the user's explicit request while diagnosing A1. No M15+ implementation.
+Current status: **PARTIAL**. Recovery completed; cumulative budget is 14/27 opens, 14 closes, zero new Parts and no unresolved ownership. New native execution is stopped at the complete-plan budget/input boundary. All production qualification gates remain closed. No M15+ implementation.
+
+Current report: [M14 recovery and completion](milestone-14-recovery-completion.md). Recovery proof: `artifacts/milestone14/recovery-v1/result.json`; disk-only source/fixture/history audit: `artifacts/milestone14/recovery-assessment-v1/offline-audit.json`.
+
+## Historical Diagnosis Snapshot
+
+The following 2/12 counts and intake-only runner description describe the earlier A1 pause, not today's ledger or implementation. They are retained for traceability and superseded by the current report, not applied as current qualification evidence.
 
 ## Implemented Foundation
 

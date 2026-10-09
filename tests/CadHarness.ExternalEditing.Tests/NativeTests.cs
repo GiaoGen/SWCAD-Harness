@@ -18,7 +18,7 @@ internal static class NativeTests
         if(mode=="--acceptance")return NativeAcceptance.Run(root,evidence,source);
         var output = Path.Combine(root, "artifacts", "milestone14", evidence);
         if (!File.Exists(Path.Combine(output, "native-freeze.json"))) throw new InvalidOperationException("Freeze exact source, binaries and fixture before native calls.");
-        using var connection = SolidWorksConnection.Connect();
+        using var connection = SolidWorksConnection.Connect(false);
         using var ledger = new Ledger(Path.Combine(root, "artifacts", "milestone14"), connection.Application, evidence + mode);
         var package = Path.Combine(output, "package"); var original = ManagedRevisionStore.Fingerprint(source);
         if (mode == "--intake")
@@ -57,16 +57,22 @@ internal static class NativeTests
         {
             this.app = app; path = Path.Combine(root, "native-budget.json");
             lease = new FileStream(Path.Combine(root, "native-budget.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            try
+            {
             Data = JsonSerializer.Deserialize<Budget>(File.ReadAllText(path))!;
             if(Data.OwnedTitles.Count!=0)throw new StateException("UNRESOLVED_NATIVE_OWNERSHIP","Resolve existing owned document before another slot.");
             if(authorization is not null)
             {
                 var grant=JsonSerializer.Deserialize<M14AdditionalBudget>(File.ReadAllText(authorization),AcceptanceFiles.Json)!;
-                grant.Validate();Data.MaximumOpenCycles=grant.MaximumCumulativeOpens;
+                grant.Validate();
+                Program.Check(Data.MaximumOpenCycles==grant.MaximumCumulativeOpens||Data.MaximumOpenCycles==grant.PreviousMaximumOpens,"Grant is not a continuation of the current budget ceiling.");
+                Data.MaximumOpenCycles=grant.MaximumCumulativeOpens;
             }
             controllerCeiling=maximumControllerOpens>0?Math.Min(Data.MaximumOpenCycles,Data.OpenAttempts+maximumControllerOpens):Data.MaximumOpenCycles;
             if (Data.AttemptedSteps.Contains(slot)) throw new StateException("NATIVE_SLOT_ALREADY_ATTEMPTED", "Preserve attempts; never rerun a slot.");
             Data.AttemptedSteps.Add(slot); Record("controller-start", slot);
+            }
+            catch { lease.Dispose(); throw; }
         }
         internal string[] Titles() => app.GetDocuments() is Array docs ? docs.Cast<object>().OfType<IModelDoc2>().Select(d => d.GetTitle()).ToArray() : Array.Empty<string>();
         public void BeforeOpen(string path)
