@@ -72,11 +72,54 @@ internal static class ExternalNativeQualification
             if (feature.ListExternalFileReferencesCount() != 0) Fail("External native feature references are unsupported.", "UNSUPPORTED_PARAMETER_DRIVER");
             foreach (var dimension in Dimensions(feature))
                 if (dimension.Dimension.ReadOnly || dimension.Dimension.IsDesignTableDimension()) Fail("Read-only/design-table driving history.", "UNSUPPORTED_PARAMETER_DRIVER");
-            if (feature.GetSpecificFeature2() is ISketch sketch &&
-                (sketch.RelationManager.GetRelationsCount((int)swSketchRelationFilterType_e.swExternal) != 0 ||
-                 sketch.RelationManager.GetRelationsCount((int)swSketchRelationFilterType_e.swDefinedInContext) != 0))
-                Fail("Externally driven/in-context sketch is unsupported.", "UNSUPPORTED_PARAMETER_DRIVER");
+            if (feature.GetSpecificFeature2() is ISketch sketch)
+            {
+                var context=sketch.RelationManager.GetRelationsCount((int)swSketchRelationFilterType_e.swDefinedInContext);
+                var externalRelations=sketch.RelationManager.GetRelationsCount((int)swSketchRelationFilterType_e.swExternal);
+                if(context!=0||externalRelations<0||externalRelations>16)Fail("Externally driven/in-context sketch is unsupported.","UNSUPPORTED_PARAMETER_DRIVER");
+                if(externalRelations>0)
+                {
+                    var relations=Objects<ISketchRelation>(sketch.RelationManager.GetRelations((int)swSketchRelationFilterType_e.swExternal)).ToArray();
+                    if(relations.Length!=externalRelations||relations.Any(r=>!LocalOriginRelation(document,sketch,r)))
+                        Fail("External sketch relation is not a verified local origin coincidence: "+feature.Name,"UNSUPPORTED_PARAMETER_DRIVER");
+                }
+            }
         }
+    }
+    private static bool LocalOriginRelation(IModelDoc2 document,ISketch sketch,ISketchRelation relation)
+    {
+        // swExternal means external to the sketch. Resolve its definition source;
+        // coordinates or the proxy point type alone cannot prove a local origin.
+        var entities=Objects<object>(relation.GetEntities()).ToArray();
+        var definitions=Objects<object>(relation.GetDefinitionEntities2()).ToArray();
+        var segments=Objects<ISketchSegment>(sketch.GetSketchSegments()).Where(s=>!s.ConstructionGeometry).ToArray();
+        if(relation.Suppressed||entities.Length!=2||definitions.Length!=2||entities.Any(e=>e is not ISketchPoint)||definitions.Any(e=>e is not ISketchPoint)||
+            segments.Length!=1||segments[0] is not ISketchArc arc||arc.IsCircle()!=1)return false;
+        var points=entities.Cast<ISketchPoint>().ToArray();var proxies=points.Where(p=>p.Type==(int)swSketchPointType_e.swSketchPointType_External).ToArray();
+        if(proxies.Length!=1)return false;
+        var proxy=proxies[0];var other=points.Single(p=>!ReferenceEquals(p,proxy));var center=(ISketchPoint)arc.GetCenterPoint2();
+        bool SameReference(object a,object b)
+        {
+            if(document.Extension.GetPersistReference3(a) is not byte[] ra||document.Extension.GetPersistReference3(b) is not byte[] rb||!ra.SequenceEqual(rb))return false;
+            var resolved=document.Extension.GetObjectByPersistReference3(ra,out var error);
+            return error==0&&resolved is not null&&document.Extension.GetPersistReference3(resolved) is byte[] again&&again.SequenceEqual(ra);
+        }
+        var origins=new List<ISketchPoint>();var visited=0;
+        for(var f=document.FirstFeature() as IFeature;f is not null;f=f.GetNextFeature() as IFeature)
+        {
+            if(++visited>512)return false;
+            if(f.GetTypeName2()=="OriginProfileFeature"&&f.GetSpecificFeature2() is ISketch originSketch)
+                origins.AddRange(Objects<ISketchPoint>(originSketch.GetSketchPoints2()));
+        }
+        if(origins.Count!=1)return false;
+        var origin=origins[0];var sourcePoints=definitions.Cast<ISketchPoint>().ToArray();
+        var definitionOrigin=sourcePoints.Where(p=>SameReference(p,origin)).ToArray();
+        if(definitionOrigin.Length!=1||!sourcePoints.Any(p=>SameReference(p,center)))return false;
+        return ExternalProfileOwnership.IsLocalOriginRelation(relation.GetRelationType()==(int)swConstraintType_e.swConstraintType_COINCIDENT,
+            relation.GetEntitiesCount()==2,origin.X==0&&origin.Y==0&&origin.Z==0,
+            other.Type==(int)swSketchPointType_e.swSketchPointType_Internal&&SameReference(other,center),
+            ReferenceEquals(proxy.GetSketch(),sketch)&&ReferenceEquals(other.GetSketch(),sketch),
+            SameReference(proxy,proxy)&&SameReference(definitionOrigin[0],origin),false);
     }
     internal static ExternalEditState Qualify(IModelDoc2 document, PartSelection selection)
     {

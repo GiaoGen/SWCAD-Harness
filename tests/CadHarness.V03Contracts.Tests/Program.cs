@@ -154,9 +154,9 @@ internal static class Program
         { Bad(() => V03ContractCapabilities.RequireMode(RequestMode.ManagedScalarEdit, RequestMode.ExternalScalarEdit, ModelOrigin.External), V03FailureCodes.ModeMismatch); Bad(() => V03ContractCapabilities.RequireMode(RequestMode.ExternalScalarEdit, RequestMode.ExternalScalarEdit, ModelOrigin.Harness), V03FailureCodes.ModeMismatch); });
         Add("contract-only construction never executable", () => Bad(() => V03ContractCapabilities.RequireExecutable(Construction, RequestMode.CreateModel), V03FailureCodes.CapabilityUnavailable));
         Add("contract-only batch never executable", () => Bad(() => V03ContractCapabilities.RequireExecutable(Batch, RequestMode.EditSet), V03FailureCodes.CapabilityUnavailable));
-        Add("candidate external edit never executable", () => Bad(() => NativeQualificationCandidates.RequireExecutable(Observation, "boss", ParameterKey.ExtrusionDepth), V03FailureCodes.CapabilityUnavailable));
+        Add("qualified scalar descriptor passes capability gate only", () => NativeQualificationCandidates.RequireExecutable(Observation, "boss", ParameterKey.ExtrusionDepth));
         Add("read-only target rejects before executable gate", () => Bad(() => NativeQualificationCandidates.RequireExecutable(Observation, "unknown_feature", ParameterKey.ExtrusionDepth), V03FailureCodes.ObservedOnlyTarget));
-        Add("all qualification candidates unqualified", () => Assert(NativeQualificationCandidates.Rows.Count == 4 && NativeQualificationCandidates.Rows.All(r => !r.Qualified)));
+        Add("only four M14A scalar pairs qualified", () => Assert(NativeQualificationCandidates.Rows.Count == 4 && NativeQualificationCandidates.Rows.All(r => r.Qualified)));
         Add("contract operations do not widen old executable enums/registry", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 && V03ContractCapabilities.Construction.All(c => !c.Executable)));
         Add("legacy parser rejects new operation and schema version", () =>
         { var codec = new CadProgramJson(); Assert(!codec.Parse(LegacyProgram.Replace("create_extrude", "create_revolved_boss")).IsValid); Assert(!codec.Parse(LegacyProgram.Replace("0.2", "0.3")).IsValid); });

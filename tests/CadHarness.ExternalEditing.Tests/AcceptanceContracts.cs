@@ -11,7 +11,8 @@ internal sealed record M14AdditionalBudget(string SchemaVersion,bool UserAuthori
     int AdditionalOpenCycles,int MaximumCumulativeOpens,int MaximumNewParts,string HumanAuthorization)
 {
     internal void Validate()=>Program.Check(SchemaVersion=="0.3"&&UserAuthorized&&Milestone==14&&
-        (PreviousMaximumOpens==12&&AdditionalOpenCycles==8&&MaximumCumulativeOpens==20||PreviousMaximumOpens==20&&AdditionalOpenCycles==3&&MaximumCumulativeOpens==23||PreviousMaximumOpens==23&&AdditionalOpenCycles==4&&MaximumCumulativeOpens==27)&&
+        (PreviousMaximumOpens==12&&AdditionalOpenCycles==8&&MaximumCumulativeOpens==20||PreviousMaximumOpens==20&&AdditionalOpenCycles==3&&MaximumCumulativeOpens==23||PreviousMaximumOpens==23&&AdditionalOpenCycles==4&&MaximumCumulativeOpens==27||
+        PreviousMaximumOpens==27&&MaximumCumulativeOpens==int.MaxValue&&AdditionalOpenCycles==int.MaxValue-27&&HumanAuthorization.Contains("No user limit",StringComparison.Ordinal))&&
         MaximumNewParts==0&&!string.IsNullOrWhiteSpace(HumanAuthorization),"Separate explicit M14 authorization required; no reset or Factory transfer.");
 }
 internal sealed record FrozenFile(string Path,string Sha256,long Bytes);

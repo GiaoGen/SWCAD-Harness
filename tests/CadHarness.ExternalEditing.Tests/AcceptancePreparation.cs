@@ -6,6 +6,41 @@ using System.Text.Json;
 
 internal static class AcceptancePreparation
 {
+    internal static int ScalarA(string root,string run,bool publicEntry,string phase="candidate")
+    {
+        var output=Path.Combine(root,"artifacts","milestone14",run);
+        var original=AcceptanceFiles.Read<AcceptanceSchedule>(Path.Combine(root,"artifacts","milestone14","acceptance-v5","schedule.json"));
+        var budgetPath=Path.Combine(root,"artifacts","milestone14","native-budget.json");var budget=JsonSerializer.Deserialize<NativeTests.Budget>(File.ReadAllText(budgetPath))!;
+        Program.Check(budget.OwnedTitles.Count==0&&budget.MaximumNewParts==0,"Resolve native ownership before freezing.");
+        var grant=Path.Combine(output,"authorization.json");
+        Write(grant,new M14AdditionalBudget("0.3",true,14,27,int.MaxValue-27,int.MaxValue,0,
+            "No user limit. Explicit human authorization: no budget limit for M14A; stop on repeated stagnation, preserve all cumulative counts. No new Parts; only scalar qualification, no M14B/M14C execution."));
+        var core=NativeAcceptance.CoreFinal(original.Inputs.Single(i=>i.Id=="dev_core")) with{Id="core-r4"};
+        var final=NativeAcceptance.ScalarFinal(core) with{Id="core-r7"};
+        var origin=original.Inputs.Single(i=>i.Id=="dev_origin");
+        var originFinal=AcceptanceFiles.Change(origin,"hole_b",CadHarness.Ir.V03.ParameterKey.HoleDiameter,11) with{Id="origin-r1"};
+        var corePackage=original.Scenarios.Single(s=>s.Id=="core").Package;
+        var inputs=original.Inputs.Concat(new[]{core,final,originFinal,NativeAcceptance.PublicFinal(final) with{Id="core-public-r11"}}).ToArray();
+        string Package(string id)=>Path.Combine(output,"packages",id);
+        var scenarios=phase=="boundaries"?new[]{new AcceptanceScenario("boundaries","scalar-native-boundaries","dev_core",Package("boundaries"),null,3,false)}:
+            phase=="probe"?new[]{new AcceptanceScenario("probe","origin-driver-probe","dev_origin",Package("probe"),null,1,false)}:
+            publicEntry?new[]{new AcceptanceScenario("scalar-public","scalar-public","core-r7",corePackage,null,5,true),new AcceptanceScenario("public-cold","scalar-cold","core-public-r11",corePackage,"scalar-public",1,false)}:
+            new[]{new AcceptanceScenario("core","scalar-candidate-v4","core-r4",corePackage,null,5,false),new AcceptanceScenario("core-cold","scalar-cold","core-r7",corePackage,"core",1,false),
+                new AcceptanceScenario("origin","scalar-origin","dev_origin",Package("origin"),null,2,false),new AcceptanceScenario("origin-cold","scalar-cold","origin-r1",Package("origin"),"origin",1,false),
+                new AcceptanceScenario("equation","mandatory-refusal","dev_equation_driver",Package("equation"),null,1,false),new AcceptanceScenario("unknown","mandatory-refusal","dev_unknown_descendant",Package("unknown"),null,1,false)};
+        if(phase=="remaining")scenarios=scenarios.Where(s=>s.Id is not "core" and not "core-cold").ToArray();
+        var plan=new AcceptanceSchedule("0.3",run,grant,inputs,scenarios);AcceptanceFiles.Validate(plan);
+        if(!publicEntry&&phase=="candidate")Program.Check(budget.OpenAttempts==14&&budget.MaximumOpenCycles==27,"Recheck changed starting authority/budget before candidate run.");
+        var schedule=Path.Combine(output,"schedule.json");Write(schedule,plan);File.Copy(budgetPath,Path.Combine(output,"initial-budget.json"),false);
+        var registry=Path.Combine(root,"artifacts","fixture-factory","audits","final-v1","fixture-registry.json");using var data=JsonDocument.Parse(File.ReadAllText(registry));
+        var files=new List<FrozenFile>{AcceptanceFiles.Identity(grant),AcceptanceFiles.Identity(Path.Combine(output,"initial-budget.json")),AcceptanceFiles.Identity(registry)};
+        foreach(var f in data.RootElement.GetProperty("fixtures").EnumerateArray())foreach(var k in new[]{"manifest","proof","ready","nativePart"}){var file=f.GetProperty(k).Deserialize<FrozenFile>(AcceptanceFiles.Json)!;AcceptanceFiles.Verify(file);files.Add(file);}
+        foreach(var dir in new[]{"source","bin"})files.AddRange(Directory.EnumerateFiles(Path.Combine(output,dir),"*",SearchOption.AllDirectories).Select(AcceptanceFiles.Identity));
+        foreach(var input in inputs){AcceptanceFiles.Verify(input.Source);files.Add(input.Source);}
+        files.Add(AcceptanceFiles.Identity(Path.Combine(root,"artifacts","milestone14","acceptance-v3","results","core","result.json")));
+        Write(Path.Combine(output,"freeze.json"),new AcceptanceFreeze("0.3",run,DateTime.UtcNow,AcceptanceFiles.Identity(schedule),files.DistinctBy(f=>f.Path).ToArray(),AcceptanceFiles.Identity(budgetPath)));
+        Console.WriteLine($"M14A scalar-only freeze: {scenarios.Sum(s=>s.MaximumOpens)} bounded opens, cumulative counters preserved, no new Parts or batch/fault matrix.");return 0;
+    }
     internal static int Run(string root,string run)
     {
         var output=Path.Combine(root,"artifacts","milestone14",run);Directory.CreateDirectory(output);

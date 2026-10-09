@@ -72,14 +72,34 @@ internal static class PureTests
             Program.Check(budget.OpenAttempts==0&&budget.OwnedTitles.Count==1&&budget.AttemptedSteps.Count==0,"Rejected controller changed history.");
         });
         Test("origin sketch is not a consumed circular profile", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 1, "Origin incorrectly counted as second profile."));
-        Test("candidate circle contract describes driver setter without granting qualification",()=>
+        Test("verified same-sketch origin coincidence is not an external driver",()=>Program.Check(ExternalProfileOwnership.IsLocalOriginRelation(true,true,true,true,true,true,false),"Local origin rejected."));
+        foreach(var rejected in Enumerable.Range(0,7))Test("unknown external origin fact refuses "+rejected,()=>
+        {
+            var flags=new[]{true,true,true,true,true,true,false};flags[rejected]=!flags[rejected];
+            Program.Check(!ExternalProfileOwnership.IsLocalOriginRelation(flags[0],flags[1],flags[2],flags[3],flags[4],flags[5],flags[6]),"Unknown/foreign/context relation permitted.");
+        });
+        Test("qualified circle contract describes verified driver setter",()=>
         {
             var row=NativeQualificationCandidates.Rows.Single(r=>r.Parameter==ParameterKey.HoleDiameter);
-            Program.Check(!row.Qualified&&row.WriteContract.Contains("SetSystemValue3",StringComparison.Ordinal)&&!row.WriteContract.Contains("SetRadius",StringComparison.Ordinal),"Candidate descriptor diverges from observed driver handler.");
+            Program.Check(row.Qualified&&row.WriteContract.Contains("SetSystemValue3",StringComparison.Ordinal)&&!row.WriteContract.Contains("SetRadius",StringComparison.Ordinal),"Scalar descriptor diverges from verified driver handler.");
         });
         Test("real duplicate profiles remain ambiguous", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 2, "Duplicate profiles silently accepted."));
         Test("unknown and 3D profile types remain unsupported", () => Program.Check(!ExternalProfileOwnership.IsConsumingProfile("3DProfileFeature") && !ExternalProfileOwnership.IsConsumingProfile("unrecognized"), "Subtype safety relaxed."));
-        Test("production gate requires native qualification, not candidate code", () => { using var p = Package("production_gate"); Refuse(() => NativeQualificationCandidates.RequireExecutable(p.CurrentExternal.Observation,"hole_a",ParameterKey.HoleDiameter)); Program.Check(p.Mutations==0,"candidate advertised"); });
+        Test("qualified scalar descriptor permits exact accessor without mutation", () => { using var p = Package("production_gate"); NativeQualificationCandidates.RequireExecutable(p.CurrentExternal.Observation,"hole_a",ParameterKey.HoleDiameter); Program.Check(p.Mutations==0,"Gate mutated native state."); });
+        Test("qualified scalar rows do not enable public EditSet",()=>{using var p=Package("batch_gate");Refuse(()=>CadHarness.Planning.V03ContractCapabilities.RequireExecutable(Batch(p.CurrentExternal),RequestMode.EditSet));Program.Check(p.Mutations==0,"Batch gate mutated.");});
+        foreach(var row in NativeQualificationCandidates.Rows)Test("exact scalar capability pair "+row.Parameter,()=>
+        {
+            using var p=Package("scalar_gate_"+row.Parameter);var model=p.CurrentExternal.Observation;var target=model.Features.Single(f=>f.SemanticId=="hole_a");
+            var parameter=target.Parameters.Single() with{Key=row.Parameter,Accessor=row.Accessor,Unit=ContractValidation.Unit(row.Parameter),Value=row.Parameter==ParameterKey.PatternCount?3:10};
+            target=target with{Subtype=row.Subtype,Parameters=new[]{parameter}};model=model with{Features=model.Features.Select(f=>f.SemanticId==target.SemanticId?target:f).ToArray()};
+            NativeQualificationCandidates.RequireExecutable(model,target.SemanticId,row.Parameter);
+            Refuse(()=>NativeQualificationCandidates.RequireExecutable(model,target.SemanticId,ParameterKey.CutDepth));
+            foreach(var variant in new[]{"readonly","suppressed","missing-ref","unknown-dependency","wrong-accessor"})
+            {
+                var rejected=variant switch{"readonly"=>target with{EditSupport=EditSupport.ReadOnly},"suppressed"=>target with{Health=ObservationHealth.Suppressed},"missing-ref"=>target with{NativeReference=null},"unknown-dependency"=>target with{DependencyCompleteness=EvidenceCompleteness.Unknown},_=>target with{Parameters=new[]{parameter with{Accessor=(NativeAccessor)int.MaxValue}}}};
+                Refuse(()=>NativeQualificationCandidates.RequireExecutable(model with{Features=model.Features.Select(f=>f.SemanticId==target.SemanticId?rejected:f).ToArray()},target.SemanticId,row.Parameter));
+            }
+        });
         Test("native inventory rename and order do not change identity",()=>{using var p=Package("identity_order");var m=p.CurrentExternal.Observation;Program.Check(ExternalInventoryIdentity.Matches(m with{Features=m.Features.Reverse().Select(f=>f with{DisplayName="renamed"}).ToArray()},m),"Tree order/name treated as identity.");});
         Test("native inventory persistent reference drift still refuses",()=>{using var p=Package("identity_drift");var m=p.CurrentExternal.Observation;Program.Check(!ExternalInventoryIdentity.Matches(m with{Features=m.Features.Select((f,i)=>i==0?f with{NativeReference=new("Y2hhbmdlZA==")}:f).ToArray()},m),"Reference drift accepted.");});
         Test("native inventory missing dependency still refuses",()=>{using var p=Package("identity_dependency");var m=p.CurrentExternal.Observation;Program.Check(!ExternalInventoryIdentity.Matches(m with{Dependencies=m.Dependencies.Skip(1).ToArray()},m),"Dependency drift accepted.");});
