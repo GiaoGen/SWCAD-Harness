@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "fixtureId": "dev_unknown_descendant",
+  "dataset": "development",
+  "recipe": "rectangular_plate_hole_pattern_v1",
+  "widthMm": 120,
+  "heightMm": 80,
+  "depthMm": 10,
+  "holes": [
+    {
+      "label": "seed",
+      "xMm": -40,
+      "yMm": 20,
+      "diameterMm": 8,
+      "coincidentOrigin": false
+    },
+    {
+      "label": "hole_b",
+      "xMm": -30,
+      "yMm": -20,
+      "diameterMm": 10,
+      "coincidentOrigin": false
+    },
+    {
+      "label": "hole_c",
+      "xMm": 35,
+      "yMm": -20,
+      "diameterMm": 6,
+      "coincidentOrigin": false
+    }
+  ],
+  "pattern": {
+    "label": "pattern",
+    "seed": "seed",
+    "count": 3,
+    "spacingMm": 25
+  },
+  "negative": "blind_cut_descendant",
+  "blindCut": {
+    "xMm": 45,
+    "yMm": 25,
+    "diameterMm": 6,
+    "depthMm": 2
+  }
+}

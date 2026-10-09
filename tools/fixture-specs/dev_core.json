@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "fixtureId": "dev_core",
+  "dataset": "development",
+  "recipe": "rectangular_plate_hole_pattern_v1",
+  "widthMm": 120,
+  "heightMm": 80,
+  "depthMm": 10,
+  "holes": [
+    {
+      "label": "seed",
+      "xMm": -40,
+      "yMm": 20,
+      "diameterMm": 8,
+      "coincidentOrigin": false
+    },
+    {
+      "label": "hole_b",
+      "xMm": -30,
+      "yMm": -20,
+      "diameterMm": 10,
+      "coincidentOrigin": false
+    },
+    {
+      "label": "hole_c",
+      "xMm": 35,
+      "yMm": -20,
+      "diameterMm": 6,
+      "coincidentOrigin": false
+    }
+  ],
+  "pattern": {
+    "label": "pattern",
+    "seed": "seed",
+    "count": 3,
+    "spacingMm": 25
+  },
+  "negative": "none",
+  "blindCut": null
+}
