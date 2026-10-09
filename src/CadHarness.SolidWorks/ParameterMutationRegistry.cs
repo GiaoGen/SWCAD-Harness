@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using CadHarness.Ir;
 using CadHarness.State;
+using CadHarness.Ir.V03;
+using CadHarness.State.V03;
 
 namespace CadHarness.SolidWorks;
 
@@ -62,6 +64,9 @@ public sealed class ParameterMutationRegistry
     }
     public IParameterMutationHandler Get(OperationNode owner, EditableParameter parameter) => TryGet(owner, parameter, out var handler) ? handler :
         throw new StateException(FailureCodes.OperationUnsupported, "No registered native mutation handler for this active owner/parameter pair.");
+    public IObservedParameterMutationHandler GetObserved(NativeSubtype subtype, ParameterKey parameter) =>
+        handlers.Values.Distinct().OfType<IObservedParameterMutationHandler>().SingleOrDefault(h => h.Supports(subtype, parameter)) ??
+        throw new StateException(V03FailureCodes.UnsupportedNativeSubtype, "No registered observed-feature parameter handler.");
     public CadProgram ApplyProgram(CadProgram current, OperationNode edit)
     {
         var proposed = RelationParameterEditor.Apply(current, edit, Fields);

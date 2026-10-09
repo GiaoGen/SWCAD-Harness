@@ -111,11 +111,13 @@ public static class ExternalPartInspection
     }
     [DllImport("user32.dll", SetLastError = true)] private static extern uint GetGuiResources(IntPtr process, uint flag);
 
-    private sealed class NativeSource : IExternalObservationSource
+    internal sealed class NativeSource : IExternalObservationSource
     {
         private readonly IModelDoc2 document;
         private readonly Dictionary<string, IFeature> features = new(StringComparer.Ordinal);
-        public NativeSource(IModelDoc2 document) => this.document = document;
+        private readonly bool emptyLinksKnown;
+        public NativeSource(IModelDoc2 document, bool emptyLinksKnown = false)
+        { this.document = document; this.emptyLinksKnown = emptyLinksKnown; }
         private static string Key(object native)
         {
             var pointer = Marshal.GetIUnknownForObject(native);
@@ -173,6 +175,8 @@ public static class ExternalPartInspection
             try
             {
                 var definition = feature.GetDefinition();
+                if (definition is IExtrudeFeatureData2 probe)
+                    reason = $"Extrude subtype not qualified: thin={probe.IsThinFeature()}, bothDirections={probe.BothDirections}, draftD1={probe.GetDraftWhileExtruding(true)}, boss={probe.IsBossFeature()}, base={probe.IsBaseExtrude()}, endConditionD1={probe.GetEndCondition(true)}.";
                 if (definition is IExtrudeFeatureData2 extrude && !extrude.IsThinFeature() && !extrude.BothDirections && !extrude.GetDraftWhileExtruding(true))
                 {
                     if ((extrude.IsBossFeature() || extrude.IsBaseExtrude()) && extrude.GetEndCondition(true) == (int)swEndConditions_e.swEndCondBlind)
@@ -182,13 +186,18 @@ public static class ExternalPartInspection
                     }
                     else if (!extrude.IsBossFeature() && !extrude.IsBaseExtrude() && extrude.GetEndCondition(true) == (int)swEndConditions_e.swEndCondThroughAll)
                     {
-                        var sketches = (parents ?? Array.Empty<string>()).Where(features.ContainsKey).Select(p => features[p].GetSpecificFeature2()).OfType<ISketch>().ToArray();
+                        var parentFeatures = (parents ?? Array.Empty<string>()).Where(features.ContainsKey).Select(p => features[p]).ToArray();
+                        var sketches = parentFeatures.Where(p => ExternalProfileOwnership.IsConsumingProfile(p.GetTypeName2()))
+                            .Select(p => p.GetSpecificFeature2()).OfType<ISketch>().ToArray();
+                        reason = "Through-all cut reader: native parents=" + string.Join(",", parentFeatures.Select(p => p.GetTypeName2())) +
+                            $"; consumed ProfileFeature sketches={sketches.Length}; OriginProfileFeature is a constraint/reference parent, not a profile.";
                         if (sketches.Length == 1 && sketches[0].GetSketchSegments() is Array segments)
                         {
                             if (segments.Length > ContractLimits.SketchEntities) overflow = true;
                             else
                             {
                                 var active = segments.Cast<object>().OfType<ISketchSegment>().Where(s => !s.ConstructionGeometry).ToArray();
+                                reason += $" Total segments={segments.Length}; active={active.Length}; active circular arcs={active.OfType<ISketchArc>().Count(a => a.IsCircle() != 0)}.";
                                 if (active.Length == 1 && active[0] is ISketchArc circle && circle.IsCircle() != 0)
                                 { subtype = NativeSubtype.SingleCircleThroughAllCut; parameters.Add(Scalar(ParameterKey.HoleDiameter, circle.GetRadius() * 2000, NativeAccessor.SingleCircleRadius, "Single owning ISketchArc.IsCircle/GetRadius, meters*2000; cut definition through-all. Hole Wizard is not equivalent.")); }
                             }
@@ -221,9 +230,9 @@ public static class ExternalPartInspection
             { subtype = NativeSubtype.Unrecognized; parameters.Clear(); geometry.Clear(); reason = "Native reader unavailable: " + error.GetType().Name + "; no value inferred."; }
             return new(subtype, parameters, geometry, parents, children, reason, overflow);
         }
-        private static string[]? Links(object? links)
+        private string[]? Links(object? links)
         {
-            if (links is null) return null;
+            if (links is null) return emptyLinksKnown ? Array.Empty<string>() : null;
             if (links is not Array array) throw new COMException("Native dependency array unavailable.");
             if (array.Length > ContractLimits.Dependencies) throw new StateException(V03FailureCodes.ObservationLimitExceeded, "Dependency array exceeds bound.");
             if (array.Cast<object>().Any(value => value is not IFeature)) return null;

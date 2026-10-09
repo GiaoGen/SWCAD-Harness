@@ -8,7 +8,7 @@ using SolidWorks.Interop.swconst;
 
 namespace CadHarness.SolidWorks;
 
-public sealed class PatternScalarMutationHandler : IParameterMutationHandler
+public sealed partial class PatternScalarMutationHandler : IParameterMutationHandler
 {
     public IReadOnlyList<ParameterMutationDescriptor> Descriptors { get; } = Array.AsReadOnly(new[]
     {
@@ -71,7 +71,7 @@ public sealed class PatternScalarMutationHandler : IParameterMutationHandler
     public void ValidateNative(SolidWorksExecutionContext context, CadProgram expected, string target, EditableParameter parameter) { }
 }
 
-public sealed class ExtrusionDepthMutationHandler : IParameterMutationHandler
+public sealed partial class ExtrusionDepthMutationHandler : IParameterMutationHandler
 {
     public IReadOnlyList<ParameterMutationDescriptor> Descriptors { get; } = Array.AsReadOnly(new[]
         { new ParameterMutationDescriptor(OperationKind.CreateExtrude, EditableParameter.ExtrusionDepth, "depthMm") });
@@ -116,7 +116,7 @@ public sealed class ExtrusionDepthMutationHandler : IParameterMutationHandler
     }
 }
 
-public sealed class HoleDiameterMutationHandler : IParameterMutationHandler
+public sealed partial class HoleDiameterMutationHandler : IParameterMutationHandler
 {
     // M9A exposes the through-hole path that is actually verified. Blind-hole
     // diameter can be registered separately after its native validation.

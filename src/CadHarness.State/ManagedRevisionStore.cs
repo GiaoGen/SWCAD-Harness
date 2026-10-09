@@ -13,7 +13,12 @@ public enum DurableFaultPoint { BeforeNativeSave, AfterNativeSave, AfterStateFlu
 public sealed record ManagedRevisionPointer(string SchemaVersion, ArtifactIdentity Manifest);
 public sealed record ManagedRecoveryMarker(string SchemaVersion, ArtifactIdentity? PreviousManifest, long PreviousRevision,
     string WorkingPath, string CandidateDirectory, long CandidateRevision);
-public sealed record ManagedRevision(RevisionManifest Manifest, ArtifactIdentity ManifestArtifact, CadState State, CadProgram Program);
+public sealed record ManagedRevision(RevisionManifest Manifest, ArtifactIdentity ManifestArtifact, CadState State,
+    CadProgram? ConstructionProgram, ExternalEditState? External = null)
+{
+    public CadProgram Program => ConstructionProgram ?? throw new StateException(V03FailureCodes.ModeMismatch,
+        "An external observed revision has no construction program.");
+}
 public sealed record ManagedRecoveryInspection(ReopenStatus Status, string? FailureCode, string Message,
     ManagedRevision? Revision, bool RequiresNativeRecovery);
 public sealed record ManagedMigrationEvidence(string SchemaVersion, string OldStateVersion, string NewManifestVersion,
@@ -25,6 +30,15 @@ public interface IManagedRevisionNative
     CadProgram CurrentProgram { get; }
     void SaveNative();
     void VerifySavedRevision(CadState state, CadProgram program);
+}
+
+public interface IObservedRevisionNative : IManagedRevisionNative
+{
+    ExternalEditState CurrentExternal { get; }
+    void VerifySavedExternal(ExternalEditState state);
+    CadProgram IManagedRevisionNative.CurrentProgram => throw new StateException(V03FailureCodes.ModeMismatch, "External state has no CadProgram.");
+    void IManagedRevisionNative.VerifySavedRevision(CadState state, CadProgram program) =>
+        throw new StateException(V03FailureCodes.ModeMismatch, "Cannot reinterpret an external revision as managed.");
 }
 
 // Native save and JSON state are not atomic together. Only the small pointer is
@@ -98,21 +112,32 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         Directory.CreateDirectory(directory); RejectReparse(directory);
         fault?.Invoke(DurableFaultPoint.BeforeNativeSave);
         if (previous is not null) VerifyWorking(previous);
-        ValidateAssociation(state, native.CurrentProgram);
+        ValidateNativeAssociation(state);
         native.SaveNative();
         fault?.Invoke(DurableFaultPoint.AfterNativeSave);
         var nativePath = Path.Combine(directory, "part.SLDPRT"); CopyFlushed(WorkingPath, nativePath);
-        var statePath = Path.Combine(directory, "state.json"); new AtomicStateStore(statePath).Commit(state);
-        var programPath = Path.Combine(directory, "program.json");
-        var programJson = new CadProgramJson().Serialize(native.CurrentProgram);
-        var parsed = new CadProgramJson().Parse(programJson);
-        if (!parsed.IsValid) throw new StateException("PROGRAM_SCHEMA_INVALID", "Durable program is not strict v0.2.");
-        WriteNew(programPath, programJson);
+        var statePath = Path.Combine(directory, "state.json");
+        ArtifactIdentity? programArtifact = null;
+        if (native is IObservedRevisionNative observed)
+        {
+            ValidateNativeAssociation(state);
+            WriteNew(statePath, ContractJson.Write(observed.CurrentExternal, ExternalEditPlanning.Validate));
+        }
+        else
+        {
+            new AtomicStateStore(statePath).Commit(state);
+            var programPath = Path.Combine(directory, "program.json");
+            var programJson = new CadProgramJson().Serialize(native.CurrentProgram);
+            var parsed = new CadProgramJson().Parse(programJson);
+            if (!parsed.IsValid) throw new StateException("PROGRAM_SCHEMA_INVALID", "Durable program is not strict v0.2.");
+            WriteNew(programPath, programJson); programArtifact = Artifact(programPath, "0.2");
+        }
         fault?.Invoke(DurableFaultPoint.AfterStateFlush);
-        native.VerifySavedRevision(state, parsed.Program!);
+        if (native is IObservedRevisionNative saved) saved.VerifySavedExternal(saved.CurrentExternal);
+        else native.VerifySavedRevision(state, native.CurrentProgram);
         if (Hash(WorkingPath) != Hash(nativePath)) throw new StateException(V03FailureCodes.SourceFileDrift, "Native bytes changed during saved-package verification.");
-        var manifest = new RevisionManifest("0.3", ModelOrigin.Harness, state.Document.DocumentId, state.Document.ConfigurationId,
-            state.Document.ConfigurationName, state.Revision, Fingerprint(nativePath), Artifact(statePath, "0.2"), Artifact(programPath, "0.2"),
+        var manifest = new RevisionManifest("0.3", native is IObservedRevisionNative ? ModelOrigin.External : ModelOrigin.Harness, state.Document.DocumentId, state.Document.ConfigurationId,
+            state.Document.ConfigurationName, state.Revision, Fingerprint(nativePath), Artifact(statePath, native is IObservedRevisionNative ? "0.3" : "0.2"), programArtifact,
             previous?.ManifestArtifact.Sha256, PublishStage.PointerPublished);
         var manifestPath = Path.Combine(directory, "manifest.json");
         WriteNew(manifestPath, ContractJson.Write(manifest, ObservedStateValidation.Manifest));
@@ -176,7 +201,9 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         Check(); var revision = inspection.Revision ?? throw new StateException(V03FailureCodes.IncompleteDurablePublish, "Missing recovery revision.");
         if (!inspection.RequiresNativeRecovery) return;
         RequireRecoveryAuthority(inspection);
-        VerifyWorking(revision); native.VerifySavedRevision(revision.State, revision.Program);
+        VerifyWorking(revision);
+        if (native is IObservedRevisionNative observed && revision.External is not null) observed.VerifySavedExternal(revision.External);
+        else native.VerifySavedRevision(revision.State, revision.Program);
         VerifyWorking(revision);
         WritePointer(revision.ManifestArtifact); File.Delete(RecoveryPath);
     }
@@ -205,21 +232,50 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         if (artifact.SchemaVersion != "0.3") throw new StateException(V03FailureCodes.IncompleteDurablePublish, "Manifest version is not v0.3.");
         VerifyArtifact(artifact);
         var manifest = ContractJson.Read<RevisionManifest>(ReadText(artifact.Path), ObservedStateValidation.Manifest, MaximumMetadataBytes);
-        if (manifest.Origin != ModelOrigin.Harness || manifest.Stage != PublishStage.PointerPublished || manifest.Program is null)
-            throw new StateException(FailureCodes.OperationUnsupported, "Only complete managed packages are accepted in M12.");
+        if (manifest.Stage != PublishStage.PointerPublished || (manifest.Origin == ModelOrigin.External) != (native is IObservedRevisionNative))
+            throw new StateException(V03FailureCodes.ModeMismatch, "Revision origin differs from the native controller mode.");
         var directory = Path.GetDirectoryName(artifact.Path)!;
-        GuardPath(manifest.NativePart.Path, directory); GuardArtifact(manifest.State, directory); GuardArtifact(manifest.Program, directory);
+        GuardPath(manifest.NativePart.Path, directory); GuardArtifact(manifest.State, directory);
+        if (manifest.Origin == ModelOrigin.External)
+        {
+            if (manifest.Program is not null || manifest.State.SchemaVersion != "0.3")
+                throw new StateException(V03FailureCodes.ModeMismatch, "External packages contain only observed state, never a synthetic program.");
+            VerifyFingerprint(manifest.NativePart); VerifyArtifact(manifest.State);
+            var external = ContractJson.Read<ExternalEditState>(ReadText(manifest.State.Path), ExternalEditPlanning.Validate, MaximumMetadataBytes);
+            var adapter = ExternalEditPlanning.Adapter(external); ValidateStatePath(adapter);
+            VerifyManifestIdentity(manifest, adapter);
+            if (external.Observation.Selection.WorkingCopy.Sha256 != manifest.NativePart.Sha256 ||
+                external.Observation.Selection.WorkingCopy.SizeBytes != manifest.NativePart.SizeBytes)
+                throw new StateException(V03FailureCodes.SourceFileDrift, "Observed working hash differs from native snapshot.");
+            return new(manifest, artifact, adapter, null, external);
+        }
+        if (manifest.Program is null) throw new StateException(V03FailureCodes.ModeMismatch, "Managed revision requires a program.");
+        GuardArtifact(manifest.Program, directory);
         if (manifest.State.SchemaVersion != "0.2" || manifest.Program.SchemaVersion != "0.2")
             throw new StateException(FailureCodes.OperationUnsupported, "M12 reopens qualified v0.2 programs/state with a v0.3 manifest.");
         VerifyFingerprint(manifest.NativePart); VerifyArtifact(manifest.State); VerifyArtifact(manifest.Program);
         var state = new AtomicStateStore(manifest.State.Path).Load(); ValidateStatePath(state);
         var parsed = new CadProgramJson().Parse(ReadText(manifest.Program.Path));
         if (!parsed.IsValid) throw new StateException("PROGRAM_SCHEMA_INVALID", "Committed program is invalid.");
+        VerifyManifestIdentity(manifest, state);
+        ValidateAssociation(state, parsed.Program!);
+        return new(manifest, artifact, state, parsed.Program!);
+    }
+    private static void VerifyManifestIdentity(RevisionManifest manifest, CadState state)
+    {
         if (state.Document.DocumentId != manifest.DocumentId || state.Document.ConfigurationId != manifest.ConfigurationId ||
             state.Document.ConfigurationName != manifest.ConfigurationName || state.Revision != manifest.Revision)
             throw new StateException("DOCUMENT_IDENTITY_MISMATCH", "Manifest identity/configuration/revision disagrees with state.");
-        ValidateAssociation(state, parsed.Program!);
-        return new(manifest, artifact, state, parsed.Program!);
+    }
+    private void ValidateNativeAssociation(CadState state)
+    {
+        if (native is not IObservedRevisionNative observed) { ValidateAssociation(state, native.CurrentProgram); return; }
+        var adapter = ExternalEditPlanning.Adapter(observed.CurrentExternal);
+        if (!state.Document.Matches(adapter.Document) || state.Revision != adapter.Revision ||
+            !state.Features.SequenceEqual(adapter.Features) || !state.Parameters.SequenceEqual(adapter.Parameters) ||
+            !state.Bindings.SequenceEqual(adapter.Bindings) || state.Entities.Count != 0 || state.Relations.Count != 0 ||
+            !StateRelationData.Dependencies(state).SequenceEqual(StateRelationData.Dependencies(adapter)))
+            throw new StateException("STATE_DRIFT_DETECTED", "Coordinator state differs from the complete external companion.");
     }
     public static void ValidateAssociation(CadState state, CadProgram program)
     {

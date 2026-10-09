@@ -52,6 +52,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ManagedRecovery.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ExternalObservation.Tests", "tests\CadHarness.ExternalObservation.Tests\CadHarness.ExternalObservation.Tests.csproj", "{C35BEB99-FDE4-49DC-88ED-07B31FB2780B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ExternalEditing.Tests", "tests\CadHarness.ExternalEditing.Tests\CadHarness.ExternalEditing.Tests.csproj", "{6099E97B-E1D7-4C23-84F5-E3C64E70D025}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
@@ -103,6 +105,8 @@ Global
 		{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C35BEB99-FDE4-49DC-88ED-07B31FB2780B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C35BEB99-FDE4-49DC-88ED-07B31FB2780B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6099E97B-E1D7-4C23-84F5-E3C64E70D025}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6099E97B-E1D7-4C23-84F5-E3C64E70D025}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C104C31F-96AC-4737-989B-874D0C566C8B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
@@ -120,5 +124,6 @@ Global
 		{C0D1B965-138A-4AD0-80C0-A239998DB621} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{C35BEB99-FDE4-49DC-88ED-07B31FB2780B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+		{6099E97B-E1D7-4C23-84F5-E3C64E70D025} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 	EndGlobalSection
 EndGlobal
