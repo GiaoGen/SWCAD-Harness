@@ -1,0 +1,754 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "maxLength": 10924,
+      "const": "0.3"
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "harness",
+        "external"
+      ]
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "configurationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "configurationName": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 10924
+            },
+            "sha256": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "sizeBytes"
+          ]
+        },
+        "workingCopy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 10924
+            },
+            "sha256": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "sizeBytes"
+          ]
+        }
+      },
+      "required": [
+        "documentId",
+        "configurationId",
+        "configurationName",
+        "expectedRevision",
+        "source",
+        "workingCopy"
+      ]
+    },
+    "inventoryComplete": {
+      "type": "boolean"
+    },
+    "limitOutcome": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 10924
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "features": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "semanticId": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "treeOrdinal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "harness",
+              "external"
+            ]
+          },
+          "nativeType": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "subtype": {
+            "type": "string",
+            "enum": [
+              "straight_blind_boss_extrude",
+              "single_circle_through_all_cut",
+              "single_direction_linear_pattern",
+              "two_direction_rectangular_pattern",
+              "hole_wizard",
+              "unrecognized"
+            ]
+          },
+          "health": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "stale",
+              "suppressed",
+              "deleted",
+              "unknown"
+            ]
+          },
+          "nativeReference": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "base64": {
+                    "type": "string",
+                    "maxLength": 10924
+                  }
+                },
+                "required": [
+                  "base64"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dependencyCompleteness": {
+            "type": "string",
+            "enum": [
+              "known",
+              "unknown"
+            ]
+          },
+          "editSupport": {
+            "type": "string",
+            "enum": [
+              "editable",
+              "read_only",
+              "unsupported"
+            ]
+          },
+          "supportReason": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "evidence": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "native_definition",
+                    "persistent_reference",
+                    "native_topology",
+                    "native_dependency",
+                    "native_sketch",
+                    "file_hash"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "maxLength": 10924
+                }
+              },
+              "required": [
+                "source",
+                "detail"
+              ]
+            },
+            "minItems": 1
+          },
+          "parameters": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "extrusion_depth",
+                    "hole_diameter",
+                    "pattern_count",
+                    "pattern_spacing",
+                    "revolve_radius",
+                    "revolve_axial_span",
+                    "additive_boss_depth",
+                    "cut_depth",
+                    "slot_width",
+                    "slot_length",
+                    "slot_center_x",
+                    "slot_center_y"
+                  ]
+                },
+                "unit": {
+                  "type": "string",
+                  "enum": [
+                    "millimeter",
+                    "degree",
+                    "count"
+                  ]
+                },
+                "value": {
+                  "type": "number"
+                },
+                "accessor": {
+                  "type": "string",
+                  "enum": [
+                    "extrude_depth_direction1",
+                    "single_circle_radius",
+                    "linear_pattern_direction1_count",
+                    "linear_pattern_direction1_spacing"
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "native_definition",
+                          "persistent_reference",
+                          "native_topology",
+                          "native_dependency",
+                          "native_sketch",
+                          "file_hash"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string",
+                        "maxLength": 10924
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "detail"
+                    ]
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "semanticId",
+                "key",
+                "unit",
+                "value",
+                "accessor",
+                "evidence"
+              ]
+            },
+            "minItems": 0
+          },
+          "geometry": {
+            "type": "array",
+            "maxItems": 1024,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "semanticId": {
+                  "type": "string",
+                  "maxLength": 128,
+                  "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "body",
+                    "planar_face",
+                    "cylindrical_face",
+                    "axis"
+                  ]
+                },
+                "referenceHealth": {
+                  "type": "string",
+                  "enum": [
+                    "healthy",
+                    "stale",
+                    "suppressed",
+                    "deleted",
+                    "unknown"
+                  ]
+                },
+                "nativeReference": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "base64": {
+                          "type": "string",
+                          "maxLength": 10924
+                        }
+                      },
+                      "required": [
+                        "base64"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "frame": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "originMm": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "z": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "z"
+                          ]
+                        },
+                        "xAxis": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "z": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "z"
+                          ]
+                        },
+                        "yAxis": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "z": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "z"
+                          ]
+                        },
+                        "zAxis": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "x": {
+                              "type": "number"
+                            },
+                            "y": {
+                              "type": "number"
+                            },
+                            "z": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "z"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "originMm",
+                        "xAxis",
+                        "yAxis",
+                        "zAxis"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "minimumMm": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "z": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "maximumMm": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "z": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "radiusMm": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "volumeMm3": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "native_definition",
+                          "persistent_reference",
+                          "native_topology",
+                          "native_dependency",
+                          "native_sketch",
+                          "file_hash"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string",
+                        "maxLength": 10924
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "detail"
+                    ]
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "semanticId",
+                "kind",
+                "referenceHealth",
+                "nativeReference",
+                "frame",
+                "minimumMm",
+                "maximumMm",
+                "radiusMm",
+                "volumeMm3",
+                "evidence"
+              ]
+            },
+            "minItems": 0
+          }
+        },
+        "required": [
+          "semanticId",
+          "displayName",
+          "treeOrdinal",
+          "origin",
+          "nativeType",
+          "subtype",
+          "health",
+          "nativeReference",
+          "dependencyCompleteness",
+          "editSupport",
+          "supportReason",
+          "evidence",
+          "parameters",
+          "geometry"
+        ]
+      },
+      "minItems": 0
+    },
+    "dependencies": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "prerequisite": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "dependent": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "parent_child",
+              "sketch_to_feature",
+              "host",
+              "axis",
+              "pattern_seed",
+              "parameter_owner"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "native_definition",
+                    "persistent_reference",
+                    "native_topology",
+                    "native_dependency",
+                    "native_sketch",
+                    "file_hash"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "maxLength": 10924
+                }
+              },
+              "required": [
+                "source",
+                "detail"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "prerequisite",
+          "dependent",
+          "kind",
+          "evidence"
+        ]
+      },
+      "minItems": 0
+    },
+    "remappings": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "previousSemanticId": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+          },
+          "currentSemanticId": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 10924
+          },
+          "evidence": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "native_definition",
+                    "persistent_reference",
+                    "native_topology",
+                    "native_dependency",
+                    "native_sketch",
+                    "file_hash"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "maxLength": 10924
+                }
+              },
+              "required": [
+                "source",
+                "detail"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "previousSemanticId",
+          "currentSemanticId",
+          "reason",
+          "evidence"
+        ]
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "origin",
+    "selection",
+    "inventoryComplete",
+    "limitOutcome",
+    "features",
+    "dependencies",
+    "remappings"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:0.3:ObservedModel",
+  "$comment": "Strict field schema; ContractValidation supplies tagged-union, identity, numeric, and safety invariants. Contract-only; not an executable provider schema."
+}

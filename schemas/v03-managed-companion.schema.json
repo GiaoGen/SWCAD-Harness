@@ -1,0 +1,161 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "maxLength": 10924,
+      "const": "0.3"
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "harness",
+        "external"
+      ]
+    },
+    "legacyState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "maxLength": 10924,
+          "enum": [
+            "0.2",
+            "0.3"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "schemaVersion"
+      ]
+    },
+    "legacyProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "maxLength": 10924,
+          "enum": [
+            "0.2",
+            "0.3"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "schemaVersion"
+      ]
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "maxLength": 10924,
+          "const": "0.3"
+        },
+        "oldStateVersion": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "newCompanionVersion": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "originalStatePath": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "originalStateSha256": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "originalProgramSha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 10924
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rollbackPath": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "result": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "nativeReopenVerified": {
+          "type": "boolean"
+        },
+        "editable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "oldStateVersion",
+        "newCompanionVersion",
+        "originalStatePath",
+        "originalStateSha256",
+        "originalProgramSha256",
+        "rollbackPath",
+        "result",
+        "nativeReopenVerified",
+        "editable"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "closed",
+        "opening",
+        "inspectable",
+        "editable",
+        "quarantined"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "origin",
+    "legacyState",
+    "legacyProgram",
+    "migration",
+    "status"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:0.3:ManagedStateCompanion",
+  "$comment": "Strict field schema; ContractValidation supplies tagged-union, identity, numeric, and safety invariants. Contract-only; not an executable provider schema."
+}

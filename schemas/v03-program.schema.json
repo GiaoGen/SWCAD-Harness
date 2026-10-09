@@ -1,0 +1,767 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "programVersion": {
+      "type": "string",
+      "maxLength": 10924,
+      "const": "0.3"
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "harness",
+        "external"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "create_model",
+        "managed_scalar_edit",
+        "external_scalar_edit",
+        "edit_set"
+      ]
+    },
+    "requirementRecordId": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "create_sketch",
+              "create_datum_plane",
+              "create_extrude",
+              "create_revolved_boss",
+              "create_additive_boss",
+              "create_extruded_cut"
+            ]
+          },
+          "semanticId": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "plane": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "semanticId": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "feature_ref",
+                          "body_ref",
+                          "sketch_profile",
+                          "planar_face",
+                          "cylindrical_face",
+                          "linear_edge",
+                          "circular_edge",
+                          "reference_axis",
+                          "reference_plane",
+                          "point_ref",
+                          "local_frame"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "semanticId",
+                      "type"
+                    ]
+                  },
+                  "inPlaneDirection": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "semanticId": {
+                            "type": "string",
+                            "maxLength": 128,
+                            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "feature_ref",
+                              "body_ref",
+                              "sketch_profile",
+                              "planar_face",
+                              "cylindrical_face",
+                              "linear_edge",
+                              "circular_edge",
+                              "reference_axis",
+                              "reference_plane",
+                              "point_ref",
+                              "local_frame"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "semanticId",
+                          "type"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "frame": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "originMm": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      },
+                      "xAxis": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      },
+                      "yAxis": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      },
+                      "zAxis": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "originMm",
+                      "xAxis",
+                      "yAxis",
+                      "zAxis"
+                    ]
+                  },
+                  "offset": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "millimeters": {
+                        "type": "number",
+                        "minimum": -1000000,
+                        "maximum": 1000000
+                      }
+                    },
+                    "required": [
+                      "millimeters"
+                    ]
+                  }
+                },
+                "required": [
+                  "plane",
+                  "inPlaneDirection",
+                  "frame",
+                  "offset"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sketch": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "points": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                        },
+                        "x": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "millimeters": {
+                              "type": "number",
+                              "minimum": -1000000,
+                              "maximum": 1000000
+                            }
+                          },
+                          "required": [
+                            "millimeters"
+                          ]
+                        },
+                        "y": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "millimeters": {
+                              "type": "number",
+                              "minimum": -1000000,
+                              "maximum": 1000000
+                            }
+                          },
+                          "required": [
+                            "millimeters"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "x",
+                        "y"
+                      ]
+                    },
+                    "minItems": 0
+                  },
+                  "entities": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "line",
+                            "arc",
+                            "circle",
+                            "polyline",
+                            "slot"
+                          ]
+                        },
+                        "points": {
+                          "type": "array",
+                          "maxItems": 64,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 10924
+                          },
+                          "minItems": 0
+                        },
+                        "radius": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "millimeters": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                }
+                              },
+                              "required": [
+                                "millimeters"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sweepDegrees": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "width": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "millimeters": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                }
+                              },
+                              "required": [
+                                "millimeters"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "length": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "millimeters": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                }
+                              },
+                              "required": [
+                                "millimeters"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "points",
+                        "radius",
+                        "sweepDegrees",
+                        "width",
+                        "length"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "loops": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                        },
+                        "inner": {
+                          "type": "boolean"
+                        },
+                        "entities": {
+                          "type": "array",
+                          "maxItems": 64,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 10924
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "inner",
+                        "entities"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "constraints": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "coincident",
+                            "horizontal",
+                            "vertical",
+                            "parallel",
+                            "perpendicular",
+                            "concentric",
+                            "equal",
+                            "distance",
+                            "radius",
+                            "diameter"
+                          ]
+                        },
+                        "references": {
+                          "type": "array",
+                          "maxItems": 4,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 10924
+                          },
+                          "minItems": 1
+                        },
+                        "dimension": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "millimeters": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                }
+                              },
+                              "required": [
+                                "millimeters"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "references",
+                        "dimension"
+                      ]
+                    },
+                    "minItems": 0
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "under_constrained",
+                      "fully_constrained",
+                      "over_constrained"
+                    ]
+                  }
+                },
+                "required": [
+                  "points",
+                  "entities",
+                  "loops",
+                  "constraints",
+                  "status"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "semanticId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "feature_ref",
+                      "body_ref",
+                      "sketch_profile",
+                      "planar_face",
+                      "cylindrical_face",
+                      "linear_edge",
+                      "circular_edge",
+                      "reference_axis",
+                      "reference_plane",
+                      "point_ref",
+                      "local_frame"
+                    ]
+                  }
+                },
+                "required": [
+                  "semanticId",
+                  "type"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "axis": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "semanticId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "feature_ref",
+                      "body_ref",
+                      "sketch_profile",
+                      "planar_face",
+                      "cylindrical_face",
+                      "linear_edge",
+                      "circular_edge",
+                      "reference_axis",
+                      "reference_plane",
+                      "point_ref",
+                      "local_frame"
+                    ]
+                  }
+                },
+                "required": [
+                  "semanticId",
+                  "type"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hostBody": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "semanticId": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "feature_ref",
+                      "body_ref",
+                      "sketch_profile",
+                      "planar_face",
+                      "cylindrical_face",
+                      "linear_edge",
+                      "circular_edge",
+                      "reference_axis",
+                      "reference_plane",
+                      "point_ref",
+                      "local_frame"
+                    ]
+                  }
+                },
+                "required": [
+                  "semanticId",
+                  "type"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endCondition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "blind",
+                  "through_all",
+                  "full_revolution",
+                  "finite_angle"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "forward",
+                  "reverse"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "millimeters": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "required": [
+                  "millimeters"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "angleDegrees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bodyRule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "new_single_body",
+                  "merge_with_host",
+                  "remove_from_host"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "semanticId",
+          "placement",
+          "sketch",
+          "profile",
+          "axis",
+          "hostBody",
+          "endCondition",
+          "direction",
+          "depth",
+          "angleDegrees",
+          "bodyRule"
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "programVersion",
+    "origin",
+    "mode",
+    "requirementRecordId",
+    "operations"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:0.3:ConstructionProgram",
+  "$comment": "Strict field schema; ContractValidation supplies tagged-union, identity, numeric, and safety invariants. Contract-only; not an executable provider schema."
+}

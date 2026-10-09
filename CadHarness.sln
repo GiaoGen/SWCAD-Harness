@@ -46,11 +46,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Playground", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.Playground.Tests", "tests\CadHarness.Playground.Tests\CadHarness.Playground.Tests.csproj", "{C0D1B965-138A-4AD0-80C0-A239998DB621}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.V03Contracts.Tests", "tests\CadHarness.V03Contracts.Tests\CadHarness.V03Contracts.Tests.csproj", "{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ManagedRecovery.Tests", "tests\CadHarness.ManagedRecovery.Tests\CadHarness.ManagedRecovery.Tests.csproj", "{820E47F6-9167-4A34-920D-422CAD831912}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{820E47F6-9167-4A34-920D-422CAD831912}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{820E47F6-9167-4A34-920D-422CAD831912}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5F743242-586D-4B66-9F90-8C8A67E49701}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5F743242-586D-4B66-9F90-8C8A67E49701}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5F743242-586D-4B66-9F90-8C8A67E49702}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -91,6 +97,8 @@ Global
 		{FAACADA5-2D65-4381-8157-9798C2B39511}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C0D1B965-138A-4AD0-80C0-A239998DB621}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C0D1B965-138A-4AD0-80C0-A239998DB621}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C104C31F-96AC-4737-989B-874D0C566C8B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
@@ -106,5 +114,6 @@ Global
 		{3F23C92B-BC7F-4884-A3BA-565C820DC004} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{FAACADA5-2D65-4381-8157-9798C2B39511} = {ADDBFC1E-10E1-49D7-AA40-36DA1675BDD9}
 		{C0D1B965-138A-4AD0-80C0-A239998DB621} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
+		{7E05F7FB-D6DA-4AE1-A29F-821D85F9C8D1} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 	EndGlobalSection
 EndGlobal

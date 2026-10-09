@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/CadHarness.Ir/CadHarness.Ir.csproj" />
+    <ProjectReference Include="../../src/CadHarness.State/CadHarness.State.csproj" />
+    <ProjectReference Include="../../src/CadHarness.Planning/CadHarness.Planning.csproj" />
+  </ItemGroup>
+</Project>

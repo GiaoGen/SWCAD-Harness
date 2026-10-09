@@ -1,0 +1,166 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "maxLength": 10924,
+      "const": "0.3"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "create_model",
+        "managed_scalar_edit",
+        "external_scalar_edit",
+        "edit_set"
+      ]
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "harness",
+        "external"
+      ]
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "configurationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "configurationName": {
+          "type": "string",
+          "maxLength": 10924
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 10924
+            },
+            "sha256": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "sizeBytes"
+          ]
+        },
+        "workingCopy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 10924
+            },
+            "sha256": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "sizeBytes"
+          ]
+        }
+      },
+      "required": [
+        "documentId",
+        "configurationId",
+        "configurationName",
+        "expectedRevision",
+        "source",
+        "workingCopy"
+      ]
+    },
+    "edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*(?:\\.[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*)*$"
+        },
+        "parameter": {
+          "type": "string",
+          "enum": [
+            "extrusion_depth",
+            "hole_diameter",
+            "pattern_count",
+            "pattern_spacing",
+            "revolve_radius",
+            "revolve_axial_span",
+            "additive_boss_depth",
+            "cut_depth",
+            "slot_width",
+            "slot_length",
+            "slot_center_x",
+            "slot_center_y"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "millimeter",
+            "degree",
+            "count"
+          ]
+        },
+        "expectedOldValue": {
+          "type": "number"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "target",
+        "parameter",
+        "unit",
+        "expectedOldValue",
+        "value"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "mode",
+    "origin",
+    "selection",
+    "edit"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:0.3:ScalarEditRequest",
+  "$comment": "Strict field schema; ContractValidation supplies tagged-union, identity, numeric, and safety invariants. Contract-only; not an executable provider schema."
+}

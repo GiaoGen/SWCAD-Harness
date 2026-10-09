@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "0.3",
+  "freeze": "M11 task definitions; immutable before M20 measurements; not production presets or native qualification",
+  "units": "mm; volume mm^3; angles degrees",
+  "ranges": { "envelopeMm": [1, 200], "diameterMm": [2, 80], "positiveDepthMm": [0.5, 100], "slotCount": [3, 3], "operationMaximum": 12 },
+  "tolerances": { "linearMm": 0.01, "angleDegrees": 0.01, "relativeVolume": 0.00001 },
+  "development": [
+    {
+      "case": "C1",
+      "intent": "Create a coaxial transmission shaft: diameter 30 for axial span 0-20, diameter 24 for span 20-60, diameter 18 for span 60-80 mm. Add a 4 mm wide annular groove at axial span 35-39, radial depth 2 mm. Preserve coaxiality and the groove radial depth during the required edit.",
+      "anchors": { "diametersMm": [30, 24, 18], "lengthsMm": [20, 40, 20], "grooveStartMm": 35, "grooveWidthMm": 4, "grooveRadialDepthMm": 2 },
+      "primaryVariable": "middle_diameter",
+      "dependentRelation": "common axis; groove diameter = middle diameter - 2*groove radial depth",
+      "postCreationEdit": { "parameter": "revolve_radius", "oldValueMm": 12, "valueMm": 13 },
+      "oracle": { "volumeMm3": 0, "volumePiCoefficientMm3": 11704, "formula": "pi*(15^2*20 + 12^2*40 + 9^2*20 - (12^2-10^2)*4)", "postEditVolumePiCoefficientMm3": 12688, "boundsMm": [80, 30, 30], "axialStationsMm": [0, 20, 35, 39, 60, 80], "stationRadiiMm": [15, 12, 10, 12, 9], "postEditStationRadiiMm": [15, 13, 11, 13, 9], "nativeChecks": ["one solid body", "independent cylindrical surfaces and axial boundary measurements", "revolved driving radius readback", "groove relation and untouched spans", "healthy references", "edit then durable reopen"] }
+    },
+    {
+      "case": "C2",
+      "intent": "Create a flanged sleeve: sleeve OD 32 and axial span 0-30 mm; flange OD 48 and span 30-36 mm; bore diameter 20 at span 0-20 and diameter 24 at span 20-36. Keep all surfaces coaxial. No tolerance or fit class is claimed.",
+      "anchors": { "sleeveDiameterMm": 32, "sleeveLengthMm": 30, "flangeDiameterMm": 48, "flangeThicknessMm": 6, "boreDiametersMm": [20, 24], "boreSpansMm": [20, 16] },
+      "primaryVariable": "stepped_bore_radius",
+      "dependentRelation": "common axis; minimum sleeve wall remains positive",
+      "postCreationEdit": { "parameter": "revolve_radius", "oldValueMm": 12, "valueMm": 13 },
+      "oracle": { "volumeMm3": 0, "volumePiCoefficientMm3": 6832, "formula": "pi*(16^2*30 + 24^2*6 - 10^2*20 - 12^2*16)", "postEditVolumePiCoefficientMm3": 6432, "boundsMm": [36, 48, 48], "minimumWallMm": 4, "postEditMinimumWallMm": 3, "nativeChecks": ["one solid body", "independent axial and inner/outer radial measurements", "shoulder at axial 20 and 30", "native driving bore radius readback", "coaxiality", "unchanged flange", "edit then durable reopen"] }
+    },
+    {
+      "case": "C3",
+      "intent": "Create an L mounting bracket: base x=0..60, y=-20..20, z=0..8 mm; upright x=0..8, y=-20..20, z=8..48 mm. Base through holes diameter 6 at x=30,y=-10 and x=30,y=10, parallel to Z. Upright through hole diameter 6 at y=0,z=30, parallel to X. Round the outer upright top edge along y at x=0,z=48 using the disclosed bounded corner rule.",
+      "anchors": { "baseMm": [60, 40, 8], "uprightAdditionalHeightMm": 40, "uprightThicknessMm": 8, "holeDiameterMm": 6 },
+      "assumptions": [{ "semanticKey": "edge_radius", "valueMm": 1, "source": "defaulted", "ruleId": "bracket_cosmetic_corner", "ruleVersion": "1", "critical": false }],
+      "primaryVariable": "upright_additive_depth",
+      "dependentRelation": "perpendicular mounting faces; through-hole host and global hole centers unchanged",
+      "postCreationEdit": { "parameter": "additive_boss_depth", "oldValueMm": 40, "valueMm": 44 },
+      "oracle": { "volumeMm3": 31960, "volumePiCoefficientMm3": -206, "formula": "32000 - 216*pi - 40*(1-pi/4)", "postEditVolumeMm3": 33240, "postEditVolumePiCoefficientMm3": -206, "boundsMm": [60, 40, 48], "postEditBoundsMm": [60, 40, 52], "mountingNormalDotProduct": 0, "holeCentersMm": [[30, -10, 4], [30, 10, 4], [4, 0, 30]], "nativeChecks": ["one merged solid", "two independently measured perpendicular mounting planes", "additive depth readback", "through-hole cylindrical walls and centers", "fillet radius readback and edge identity", "host relations and unchanged base", "edit then durable reopen"] }
+    },
+    {
+      "case": "C4",
+      "intent": "Create a 100 by 60 by 8 mm mounting plate centered in XY, with three separately created blind capsule slots, length 20, width 6, depth 3 mm from the top face. Slot axes run along Y, centers at x=-30,0,30 and y=0. The capsule end radius is derived from the supplied width and disclosed.",
+      "anchors": { "plateMm": [100, 60, 8], "slotLengthMm": 20, "slotWidthMm": 6, "slotDepthMm": 3, "slotCentersMm": [[-30, 0], [0, 0], [30, 0]] },
+      "assumptions": [{ "semanticKey": "slot_end_radius", "valueMm": 3, "source": "derived_by_rule", "ruleId": "capsule_end_radius", "ruleVersion": "1", "critical": false }],
+      "primaryVariable": "left_slot_cut_depth",
+      "dependentRelation": "all slots hosted on top face; other slot dimensions and positions unchanged",
+      "postCreationEdit": { "parameter": "cut_depth", "target": "left_slot", "oldValueMm": 3, "valueMm": 4 },
+      "oracle": { "volumeMm3": 47244, "volumePiCoefficientMm3": -81, "formula": "48000 - 3*3*(6*(20-6) + pi*3^2)", "postEditVolumeMm3": 47160, "postEditVolumePiCoefficientMm3": -90, "boundsMm": [100, 60, 8], "slotWidthsMm": [6, 6, 6], "slotLengthsMm": [20, 20, 20], "slotDepthsMm": [3, 3, 3], "postEditSlotDepthsMm": [4, 3, 3], "nativeChecks": ["three independent native cut features", "one solid body", "independent slot arc/line geometry and centers", "cut depth readback", "other cuts unchanged", "healthy placement frames", "edit then durable reopen"] }
+    }
+  ],
+  "heldOut": [
+    {
+      "case": "C4-held-out",
+      "intent": "Create an 110 by 70 by 10 mm plate with three independent Y-axis blind capsule slots, length 24 width 8 depth 4 mm, centered at (-32,-4),(0,6),(32,-4). Change the middle slot depth to 5 mm; preserve the other slots.",
+      "oracle": { "volumeMm3": 75464, "volumePiCoefficientMm3": -192, "formula": "77000 - 3*4*(8*(24-8)+16*pi)", "postEditVolumeMm3": 75336, "postEditVolumePiCoefficientMm3": -208, "slotCentersMm": [[-32, -4], [0, 6], [32, -4]], "postEditSlotDepthsMm": [4, 5, 4] }
+    },
+    {
+      "case": "external-held-out-history",
+      "definition": "Two independently authored 96x64x10 mm native Parts, each with two diameter-7 through holes at (-24,0),(24,0): one single-circle cut-extrude history per hole, one Hole Wizard history. Renamed features retain persistent identity. Add an unrelated unsupported feature with proven no edit dependency; add a separate negative fixture with an unsupported downstream dependent.",
+      "edit": "Qualified circular-cut history diameter 7->9 on the left target; right hole unchanged. Equivalent Hole Wizard history remains visible/read-only until separately qualified.",
+      "oracle": { "positive": ["old/new circle readback", "old/new wall diameter", "two through boundaries", "unchanged right hole", "original SHA256 preserved", "one revision", "working-copy reopen"], "negative": ["Hole Wizard readonly", "unknown downstream refusal", "ambiguous same-size binding refusal"], "nativeFixtures": "Must be independently authored before M13 intake implementation; M11 freezes specification only; no native fixture is claimed to exist." }
+    }
+  ],
+  "criticalMissingIntents": [
+    { "intent": "Make a transmission shaft", "outcome": "NEEDS_CLARIFICATION", "missing": ["axial section lengths", "diameters", "interface requirements"] },
+    { "intent": "Make a flanged sleeve guaranteed to fit a 20 mm shaft", "outcome": "NEEDS_CLARIFICATION", "missing": ["fit class/tolerance", "outer envelope and length"] }
+  ],
+  "formalGate": { "deterministicFamilies": "4/4 including follow-up edits", "realAttemptsPerFamily": 3, "realCompleteTasksPerFamily": 2, "realCompleteTasksTotal": 8, "planningOnlyDoesNotCount": true, "requiredReopen": true },
+  "p1Deferred": ["C5", "C6", "query-driven EditSet", "relationship query", "Playground extensions"]
+}
