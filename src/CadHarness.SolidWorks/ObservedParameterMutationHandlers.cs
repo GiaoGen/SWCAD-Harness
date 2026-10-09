@@ -56,7 +56,12 @@ public sealed partial class PatternScalarMutationHandler : IObservedParameterMut
 public sealed partial class HoleDiameterMutationHandler : IObservedParameterMutationHandler
 {
     public bool Supports(NativeSubtype subtype, ParameterKey key) => subtype == NativeSubtype.SingleCircleThroughAllCut && key == ParameterKey.HoleDiameter;
-    public double ReadObserved(IModelDoc2 document, IFeature feature, ParameterKey key) => NativeHoleProfile.Circle(ExternalNativeQualification.Sketch(feature)).GetRadius() * 2000;
+    public double ReadObserved(IModelDoc2 document, IFeature feature, ParameterKey key)
+    {
+        // Dimension writes are immediate; sketch/topology caches update at the transaction rebuild.
+        var dimension = ExternalNativeQualification.HoleDimension(feature, out var diameter, false);
+        return dimension.SystemValue * (diameter ? 1000 : 2000);
+    }
     public void ApplyObserved(IModelDoc2 document, IFeature feature, ScalarEdit edit)
     {
         var dimension = ExternalNativeQualification.HoleDimension(feature, out var diameter);

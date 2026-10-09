@@ -272,9 +272,9 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         if (native is not IObservedRevisionNative observed) { ValidateAssociation(state, native.CurrentProgram); return; }
         var adapter = ExternalEditPlanning.Adapter(observed.CurrentExternal);
         if (!state.Document.Matches(adapter.Document) || state.Revision != adapter.Revision ||
-            !state.Features.SequenceEqual(adapter.Features) || !state.Parameters.SequenceEqual(adapter.Parameters) ||
-            !state.Bindings.SequenceEqual(adapter.Bindings) || state.Entities.Count != 0 || state.Relations.Count != 0 ||
-            !StateRelationData.Dependencies(state).SequenceEqual(StateRelationData.Dependencies(adapter)))
+            !state.Features.ToHashSet().SetEquals(adapter.Features) || !state.Parameters.ToHashSet().SetEquals(adapter.Parameters) ||
+            !state.Bindings.ToHashSet().SetEquals(adapter.Bindings) || state.Entities.Count != 0 || state.Relations.Count != 0 ||
+            !StateRelationData.Dependencies(state).ToHashSet().SetEquals(StateRelationData.Dependencies(adapter)))
             throw new StateException("STATE_DRIFT_DETECTED", "Coordinator state differs from the complete external companion.");
     }
     public static void ValidateAssociation(CadState state, CadProgram program)

@@ -20,7 +20,7 @@ public sealed class SolidWorksConnection : IDisposable
     private SolidWorksConnection(ISldWorks application, bool started)
     { Application = application; StartedApplication = started; }
 
-    public static SolidWorksConnection Connect()
+    public static SolidWorksConnection Connect(bool startIfNotRunning = true)
     {
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess)
             throw new PlatformNotSupportedException("SOLIDWORKS requires a 64-bit Windows controller.");
@@ -29,6 +29,7 @@ public sealed class SolidWorksConnection : IDisposable
         Marshal.ThrowExceptionForHR(CLSIDFromProgID("SldWorks.Application", out var clsid));
         var status = GetActiveObject(ref clsid, IntPtr.Zero, out var running);
         if (status >= 0) return new((ISldWorks)running, false);
+        if (!startIfNotRunning) Marshal.ThrowExceptionForHR(status);
         // Only the normal 'not running' condition permits starting a COM server.
         if (status != unchecked((int)0x800401E3)) Marshal.ThrowExceptionForHR(status);
         var existingProcessIds = new HashSet<int>();

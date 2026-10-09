@@ -21,6 +21,21 @@ public sealed record ExternalEditPreparation(ExternalEditState Before, ExternalE
 
 public static class ExternalEditPlanning
 {
+    public static ObservedModel ReconcileSavedObservation(ObservedModel expected,ObservedModel measured)
+    {
+        Require(ExternalInventoryIdentity.Matches(measured,expected),"Saved native inventory/dependencies changed.","STATE_DRIFT_DETECTED");
+        return measured with{Features=measured.Features.Select(f=>{
+            var intent=expected.Features.Single(e=>e.SemanticId==f.SemanticId);
+            Require(f.Parameters.Count==intent.Parameters.Count,"Saved native parameter set changed.","STATE_DRIFT_DETECTED");
+            return f with{EditSupport=intent.EditSupport,SupportReason=intent.SupportReason,Parameters=f.Parameters.Select(p=>{
+                var canonical=intent.Parameters.SingleOrDefault(e=>e.SemanticId==p.SemanticId&&e.Key==p.Key&&e.Accessor==p.Accessor&&e.Unit==p.Unit);
+                Require(canonical is not null,"Saved parameter identity/accessor changed.","STATE_DRIFT_DETECTED");Near(p.Value,canonical!.Value,p.Key);
+                // Keep exact committed intent, retaining raw native floating-point measurement as evidence.
+                return p with{Value=canonical.Value,Evidence=p.Evidence.Append(new ObservationEvidence(EvidenceSource.NativeDefinition,
+                    "Saved native scalar readback="+p.Value.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"; canonical intent accepted within declared scalar tolerance.")).ToArray()};
+            }).ToArray()};
+        }).ToArray()};
+    }
     public static EditableParameter LegacyParameter(ParameterKey key) => key switch
     {
         ParameterKey.ExtrusionDepth => EditableParameter.ExtrusionDepth,

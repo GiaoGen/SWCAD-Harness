@@ -30,13 +30,15 @@ internal static class ExternalNativeQualification
         return parents[0];
     }
     internal static ISketch Sketch(IFeature feature) => (ISketch)SketchFeature(feature).GetSpecificFeature2();
-    internal static IDimension HoleDimension(IFeature feature, out bool diameter)
+    internal static IDimension HoleDimension(IFeature feature, out bool diameter, bool requireProfileAgreement = true)
     {
         var sketchFeature = SketchFeature(feature); var radius = NativeHoleProfile.Circle((ISketch)sketchFeature.GetSpecificFeature2()).GetRadius();
         var matches = Dimensions(sketchFeature).Where(d => d.Display.Type2 is (int)swDimensionType_e.swDiameterDimension or (int)swDimensionType_e.swRadialDimension)
-            .Where(d => Math.Abs(d.Dimension.SystemValue - radius * (d.Display.Type2 == (int)swDimensionType_e.swDiameterDimension ? 2 : 1)) < 1e-9).ToArray();
+            .ToArray();
         if (matches.Length != 1) Fail("Hole radius needs one verified native driving radius/diameter dimension; none/ambiguous is unsupported.", "AMBIGUOUS_NATIVE_DIMENSION");
         VerifyDimension(matches[0].Dimension); diameter = matches[0].Display.Type2 == (int)swDimensionType_e.swDiameterDimension;
+        if (requireProfileAgreement && Math.Abs(matches[0].Dimension.SystemValue - radius * (diameter ? 2 : 1)) >= 1e-9)
+            Fail("Driving circle dimension and rebuilt native profile disagree.", "STATE_DRIFT_DETECTED");
         return matches[0].Dimension;
     }
     private static IEnumerable<(IDisplayDimension Display, IDimension Dimension)> Dimensions(IFeature feature)
@@ -55,17 +57,15 @@ internal static class ExternalNativeQualification
     }
     internal static void VerifyDrivers(IModelDoc2 document, ObservedModel observation)
     {
-        var configs = document.GetConfigurationCount(); var tableObject = document.GetDesignTable();
-        // SOLIDWORKS may expose a table service even when no design table exists.
-        // Its bounded native rows/columns and inventory are the evidence, not RCW non-nullness.
-        var table = tableObject as IDesignTable;
-        var rows = table?.GetTotalRowCount(); var columns = table?.GetTotalColumnCount();
-        var hasTable = tableObject is not null && (table is null || rows != 0 || columns != 0) ||
+        var configs = document.GetConfigurationCount();
+        // Row/column queries require Attach (which activates Excel). Use the official
+        // document presence query without activating or editing any design table.
+        var hasTable = document.Extension.HasDesignTable() ||
             observation.Features.Any(f => f.NativeType.Contains("DesignTable", StringComparison.OrdinalIgnoreCase));
         var equations = document.GetEquationMgr() as IEquationMgr; var count = equations?.GetCount();
         var external = document.ListExternalFileReferencesCount(false);
         if (configs != 1 || hasTable || equations is null || count != 0 || equations.LinkToFile || external != 0)
-            Fail($"Unsupported/unknown driver facts: configurations={configs}, designTable={hasTable}, tableRows={rows}, tableColumns={columns}, tableType={tableObject?.GetType().Name ?? "absent"}, equationCount={count?.ToString() ?? "unknown"}, linkedEquationFile={equations?.LinkToFile}, externalReferenceCount={external}.", "UNSUPPORTED_PARAMETER_DRIVER");
+            Fail($"Unsupported/unknown driver facts: configurations={configs}, designTable={hasTable}, equationCount={count?.ToString() ?? "unknown"}, linkedEquationFile={equations?.LinkToFile}, externalReferenceCount={external}.", "UNSUPPORTED_PARAMETER_DRIVER");
         foreach (var observed in observation.Features.Where(f => f.NativeReference is not null && f.Health == ObservationHealth.Healthy))
         {
             var feature = Resolve(document, observed);
@@ -87,10 +87,21 @@ internal static class ExternalNativeQualification
         var physical = observed.Features.Where(f => f.Subtype is NativeSubtype.StraightBlindBossExtrude or NativeSubtype.SingleCircleThroughAllCut or NativeSubtype.SingleDirectionLinearPattern).ToArray();
         var neutral = new HashSet<string>(StringComparer.Ordinal) { "HistoryFolder", "CommentsFolder", "FavoriteFolder", "SelectionSetFolder",
             "SensorFolder", "DocsFolder", "DetailCabinet", "NotesAreaFtrFolder", "SurfaceBodyFolder", "SolidBodyFolder", "MaterialFolder", "RefPlane", "OriginProfileFeature", "ProfileFeature",
-            "EnvFolder", "AmbientLight", "DirectionLight", "InkMarkupFolder", "EqnFolder" };
+            "EnvFolder", "AmbientLight", "DirectionLight", "InkMarkupFolder", "EqnFolder",
+            "AnnotationViewFeat", "FtrFolder", "ConfigTableFolder", "NativeConfigurationTableFeature" };
         foreach (var f in observed.Features.Except(physical))
+        {
             if (!neutral.Contains(f.NativeType) || f.DependencyCompleteness != EvidenceCompleteness.Known)
                 Fail("Unqualified native history remains read-only: " + f.NativeType + "/" + f.Subtype, V03FailureCodes.UnsupportedNativeSubtype);
+            if (f.NativeType is "AnnotationViewFeat" or "FtrFolder" or "ConfigTableFolder" or "NativeConfigurationTableFeature")
+            {
+                // These native UI nodes have no driving dimensions or material faces.
+                // The separate driver guard still rejects tables, equations and multiple configurations.
+                var ui = ResolveInventoryNode(document, f);
+                if (ui.GetFirstDisplayDimension() is not null || Objects<IFace2>(ui.GetFaces()).Any())
+                    Fail("Nonphysical UI inventory has unexpected dimensions/material faces.");
+            }
+        }
         if (physical.Any(f => f.Health != ObservationHealth.Healthy || f.DependencyCompleteness != EvidenceCompleteness.Known)) Fail("Stale/suppressed/unknown physical node.");
         var roots = physical.Where(f => f.Subtype == NativeSubtype.StraightBlindBossExtrude).ToArray();
         if (roots.Length != 1) Fail("Finite external qualification supports one rectangular host extrusion.");
@@ -152,10 +163,7 @@ internal static class ExternalNativeQualification
         if (document.ConfigurationManager.ActiveConfiguration.Name != expected.Observation.Selection.ConfigurationName || document.GetActiveSketch2() is not null || document.Extension.NeedsRebuild2 != 0)
             Fail("Configuration, active sketch or native rebuild state changed.", "FEATURE_REBUILD_FAILED");
         var current = ExternalObservation.Capture(expected.Observation.Selection, new ExternalPartInspection.NativeSource(document, true)).Model;
-        if (!current.InventoryComplete || current.Features.Count != expected.Observation.Features.Count ||
-            !current.Features.Select(f => (f.SemanticId, f.NativeType, f.Subtype, f.Health, f.DependencyCompleteness)).SequenceEqual(
-                expected.Observation.Features.Select(f => (f.SemanticId, f.NativeType, f.Subtype, f.Health, f.DependencyCompleteness))) ||
-            !current.Dependencies.Select(e => (e.Prerequisite, e.Dependent, e.Kind)).ToHashSet().SetEquals(expected.Observation.Dependencies.Select(e => (e.Prerequisite, e.Dependent, e.Kind))))
+        if (!ExternalInventoryIdentity.Matches(current, expected.Observation))
             Fail("Complete native inventory/dependency identity drifted.", "STATE_DRIFT_DETECTED");
         VerifyDrivers(document, current);
         foreach (var f in expected.Observation.Features.Where(f => f.EditSupport == EditSupport.Editable))
@@ -219,6 +227,37 @@ internal static class ExternalNativeQualification
         }
     }
     private static IEnumerable<T> Objects<T>(object? value) => value is Array a ? a.Cast<object>().OfType<T>() : Array.Empty<T>();
+    private static IFeature ResolveInventoryNode(IModelDoc2 document, ObservedFeature feature)
+    {
+        // Some nonphysical configuration-table nodes do not expose persistent references.
+        // They are never edit targets; require one exact native UI type/name inventory match.
+        if (feature.NativeReference is not null)
+        {
+            var value = document.Extension.GetObjectByPersistReference3(Convert.FromBase64String(feature.NativeReference.Base64), out var status) as IFeature;
+            if (status == 0 && value is not null && value.GetTypeName2() == feature.NativeType) return value;
+            Fail("Nonphysical inventory reference changed.");
+        }
+        var matches = new List<IFeature>(); var visited = new HashSet<long>(); var visits = 0;
+        void Walk(IFeature? f, bool sub)
+        {
+            while (f is not null)
+            {
+                if (++visits > ContractLimits.Dependencies) Fail("UI inventory traversal exceeded bound.");
+                var pointer = Marshal.GetIUnknownForObject(f); long identity;
+                try { identity = pointer.ToInt64(); } finally { Marshal.Release(pointer); }
+                if (visited.Add(identity))
+                {
+                    if (f.GetTypeName2() == feature.NativeType && f.Name == feature.DisplayName) matches.Add(f);
+                    Walk(f.GetFirstSubFeature() as IFeature, true);
+                    if (visited.Count > ContractLimits.Features) Fail("UI inventory traversal exceeded bound.");
+                }
+                f = (sub ? f.GetNextSubFeature() : f.GetNextFeature()) as IFeature;
+            }
+        }
+        Walk(document.FirstFeature() as IFeature, false);
+        if (matches.Count != 1) Fail("Nonphysical native inventory match is ambiguous.");
+        return matches[0];
+    }
     private static void Near(double actual, double expected, double tolerance, string message)
     { if (!double.IsFinite(actual) || Math.Abs(actual - expected) > tolerance) Fail(message, "NATIVE_GEOMETRY_MISMATCH"); }
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]

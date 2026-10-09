@@ -147,9 +147,7 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
         }
         var selection = CurrentExternal.Observation.Selection with { WorkingCopy = ManagedRevisionStore.Fingerprint(Store.WorkingPath) };
         var measured = ExternalObservation.Capture(selection, new ExternalPartInspection.NativeSource(owned, true)).Model;
-        CurrentExternal = CurrentExternal with { Observation = measured with { Features = measured.Features.Select(f => {
-            var expected = CurrentExternal.Observation.Features.Single(e => e.SemanticId == f.SemanticId);
-            return f with { EditSupport = expected.EditSupport, SupportReason = expected.SupportReason }; }).ToArray() } };
+        CurrentExternal = CurrentExternal with { Observation = ExternalEditPlanning.ReconcileSavedObservation(CurrentExternal.Observation, measured) };
         ExternalEditPlanning.Validate(CurrentExternal);
     }
     public void VerifySavedExternal(ExternalEditState expected)

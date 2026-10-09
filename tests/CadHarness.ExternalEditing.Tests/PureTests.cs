@@ -18,6 +18,14 @@ internal static class PureTests
         Test("real duplicate profiles remain ambiguous", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 2, "Duplicate profiles silently accepted."));
         Test("unknown and 3D profile types remain unsupported", () => Program.Check(!ExternalProfileOwnership.IsConsumingProfile("3DProfileFeature") && !ExternalProfileOwnership.IsConsumingProfile("unrecognized"), "Subtype safety relaxed."));
         Test("production gate requires native qualification, not candidate code", () => { using var p = Package("production_gate"); Refuse(() => NativeQualificationCandidates.RequireExecutable(p.CurrentExternal.Observation,"hole_a",ParameterKey.HoleDiameter)); Program.Check(p.Mutations==0,"candidate advertised"); });
+        Test("native inventory rename and order do not change identity",()=>{using var p=Package("identity_order");var m=p.CurrentExternal.Observation;Program.Check(ExternalInventoryIdentity.Matches(m with{Features=m.Features.Reverse().Select(f=>f with{DisplayName="renamed"}).ToArray()},m),"Tree order/name treated as identity.");});
+        Test("native inventory persistent reference drift still refuses",()=>{using var p=Package("identity_drift");var m=p.CurrentExternal.Observation;Program.Check(!ExternalInventoryIdentity.Matches(m with{Features=m.Features.Select((f,i)=>i==0?f with{NativeReference=new("Y2hhbmdlZA==")}:f).ToArray()},m),"Reference drift accepted.");});
+        Test("native inventory missing dependency still refuses",()=>{using var p=Package("identity_dependency");var m=p.CurrentExternal.Observation;Program.Check(!ExternalInventoryIdentity.Matches(m with{Dependencies=m.Dependencies.Skip(1).ToArray()},m),"Dependency drift accepted.");});
+        Test("budget extension never permits new Parts",()=>{new M14AdditionalBudget("0.3",true,14,12,8,20,0,"Human +8 authorization").Validate();try{new M14AdditionalBudget("0.3",true,14,12,8,20,1,"invalid").Validate();}catch(InvalidOperationException){return;}throw new InvalidOperationException("New Part budget widened.");});
+        Test("saved native float noise retains exact intent and raw evidence",()=>{using var p=Package("saved_float");var expected=p.CurrentExternal.Observation;var measured=expected with{Features=expected.Features.Reverse().Select(f=>f with{Parameters=f.Parameters.Select(v=>v.Key==ParameterKey.HoleDiameter?v with{Value=v.Value+1e-12}:v).ToArray()}).ToArray()};var result=ExternalEditPlanning.ReconcileSavedObservation(expected,measured);Program.Check(result.Features.SelectMany(f=>f.Parameters).All(v=>v.Value==expected.Features.SelectMany(f=>f.Parameters).Single(e=>e.SemanticId==v.SemanticId).Value),"Intent float changed.");});
+        Test("saved dimension drift outside tolerance still refuses",()=>{using var p=Package("saved_drift");var expected=p.CurrentExternal.Observation;Refuse(()=>ExternalEditPlanning.ReconcileSavedObservation(expected,expected with{Features=expected.Features.Select(f=>f with{Parameters=f.Parameters.Select(v=>v.Key==ParameterKey.HoleDiameter?v with{Value=v.Value+0.01}:v).ToArray()}).ToArray()}));});
+        Test("saved accessor drift still refuses",()=>{using var p=Package("saved_accessor");var expected=p.CurrentExternal.Observation;Refuse(()=>ExternalEditPlanning.ReconcileSavedObservation(expected,expected with{Features=expected.Features.Select(f=>f with{Parameters=f.Parameters.Select(v=>v.Key==ParameterKey.HoleDiameter?v with{Accessor=NativeAccessor.ExtrudeDepthDirection1}:v).ToArray()}).ToArray()}));});
+        Test("publication preserves identity when native inventory order changes",()=>{using var p=Package("saved_order");p.ReorderOnSave=true;Program.Check(Execute(p).Result.Succeeded,"Ordered association refused stable identities.");});
         Test("strict batch roundtrip", () => { using var p = Package("roundtrip"); var r = Batch(p.CurrentExternal); Program.Check(ContractJson.Read<EditSetRequest>(ContractJson.Write(r, ContractValidation.Edits), ContractValidation.Edits).Edits.Count == 2, "roundtrip"); });
         foreach (var variant in new[] { "empty", "single", "too_many", "duplicate", "unit", "count", "unknown_field", "missing_field", "duplicate_field", "managed_origin", "identity", "revision", "source_hash", "copy_hash", "old_value", "unknown_target", "unsupported_key" })
             Test("reject " + variant, () => { using var p = Package(variant); var r = Batch(p.CurrentExternal); var e = r.Edits[0];
@@ -103,6 +111,7 @@ internal static class PureTests
         public int Mutations { get; private set; }
         public bool Invalidated { get; private set; }
         public DurableFaultPoint? PublishFault { get; set; }
+        public bool ReorderOnSave {get;set;}
         private readonly Dictionary<(string,ParameterKey),double> live=new();
         internal FakeSession(string root)
         {
@@ -132,6 +141,7 @@ internal static class PureTests
         {
             if(Mutations>0) File.WriteAllText(Store.WorkingPath,"PURE MOCK SAVED REVISION "+CurrentExternal.Observation.Selection.ExpectedRevision);
             CurrentExternal=CurrentExternal with { Observation=CurrentExternal.Observation with { Selection=CurrentExternal.Observation.Selection with { WorkingCopy=ManagedRevisionStore.Fingerprint(Store.WorkingPath) } } };
+            if(ReorderOnSave)CurrentExternal=CurrentExternal with{Observation=CurrentExternal.Observation with{Features=CurrentExternal.Observation.Features.Reverse().ToArray(),Dependencies=CurrentExternal.Observation.Dependencies.Reverse().ToArray()}};
         }
         public void VerifySavedExternal(ExternalEditState state)=>VerifyLive(state);
         public void Restore(ManagedRecoveryInspection checkpoint)

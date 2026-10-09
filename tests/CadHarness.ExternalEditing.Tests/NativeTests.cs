@@ -15,6 +15,7 @@ internal static class NativeTests
 {
     internal static int Run(string root, string mode, string evidence, string source)
     {
+        if(mode=="--acceptance")return NativeAcceptance.Run(root,evidence,source);
         var output = Path.Combine(root, "artifacts", "milestone14", evidence);
         if (!File.Exists(Path.Combine(output, "native-freeze.json"))) throw new InvalidOperationException("Freeze exact source, binaries and fixture before native calls.");
         using var connection = SolidWorksConnection.Connect();
@@ -50,25 +51,33 @@ internal static class NativeTests
         private readonly ISldWorks app;
         private readonly string path;
         private readonly FileStream lease;
+        private readonly int controllerCeiling;
         internal Budget Data { get; }
-        internal Ledger(string root, ISldWorks app, string slot)
+        internal Ledger(string root, ISldWorks app, string slot, string? authorization = null, int maximumControllerOpens = 0)
         {
             this.app = app; path = Path.Combine(root, "native-budget.json");
             lease = new FileStream(Path.Combine(root, "native-budget.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             Data = JsonSerializer.Deserialize<Budget>(File.ReadAllText(path))!;
+            if(Data.OwnedTitles.Count!=0)throw new StateException("UNRESOLVED_NATIVE_OWNERSHIP","Resolve existing owned document before another slot.");
+            if(authorization is not null)
+            {
+                var grant=JsonSerializer.Deserialize<M14AdditionalBudget>(File.ReadAllText(authorization),AcceptanceFiles.Json)!;
+                grant.Validate();Data.MaximumOpenCycles=grant.MaximumCumulativeOpens;
+            }
+            controllerCeiling=maximumControllerOpens>0?Math.Min(Data.MaximumOpenCycles,Data.OpenAttempts+maximumControllerOpens):Data.MaximumOpenCycles;
             if (Data.AttemptedSteps.Contains(slot)) throw new StateException("NATIVE_SLOT_ALREADY_ATTEMPTED", "Preserve attempts; never rerun a slot.");
             Data.AttemptedSteps.Add(slot); Record("controller-start", slot);
         }
         internal string[] Titles() => app.GetDocuments() is Array docs ? docs.Cast<object>().OfType<IModelDoc2>().Select(d => d.GetTitle()).ToArray() : Array.Empty<string>();
         public void BeforeOpen(string path)
         {
-            if (Data.OwnedTitles.Count != 0 || Data.OpenAttempts >= 12) throw new StateException("NATIVE_BUDGET_EXHAUSTED", "M14 permits one owned document and twelve cumulative opens.");
+            if (Data.OwnedTitles.Count != 0 || Data.OpenAttempts >= controllerCeiling) throw new StateException("NATIVE_BUDGET_EXHAUSTED", "M14 permits one owned document within its frozen per-slot and cumulative ceilings.");
             Data.OpenAttempts++; Record("reserve-open", path);
         }
         public void Opened(string path, string title) { Data.OwnedTitles.Add(title); Record("opened-owned", path); }
         public void Closed(string path, string title)
         { Program.Check(Data.OwnedTitles.Remove(title), "Closing unowned document."); Data.DocumentsClosed++; Record("closed-owned", path); }
-        private void Record(string kind, string value)
+        internal void Record(string kind, string value)
         {
             using var process = Process.GetProcessById(app.GetProcessID()); process.Refresh();
             var gdi = GetGuiResources(process.Handle, 0);
