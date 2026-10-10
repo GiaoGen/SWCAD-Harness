@@ -10,6 +10,12 @@ internal static class Program
         try
         {
             if (args[1] == "--pure") return PureTests.Run(args[0]);
+            if (args[1] == "--prepare-external-catalog") return ExternalCatalog.Prepare(args[0],args[2]);
+            if (args[1] == "--external-catalog") return ExternalCatalog.Run(args[0],args[2],args[3]);
+            if (args[1] == "--external-qualification") return ExternalCatalog.Run(args[0],args[2],args[3],true);
+            if (args[1] == "--external-diagnostic") return ExternalCatalog.Run(args[0],args[2],args[3],false,true);
+            if (args[1] == "--audit-external") return ExternalCatalog.Audit(args[0],args[2]);
+            if (args[1] == "--prepare-external-models") return ExternalModelQualification.Prepare(args[0],args[2],args.Length>3?args[3]:"models");
             if (args[1] == "--reconcile-ownership") return RecoveryAudit.Run(args[0],args[2]);
             if (args[1] == "--assess-recovery") return RecoveryAudit.Assess(args[0],args[2]);
             if (args[1] == "--prepare-acceptance") return AcceptancePreparation.Run(args[0],args[2]);

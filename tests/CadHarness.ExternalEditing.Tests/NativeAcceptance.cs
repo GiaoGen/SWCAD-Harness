@@ -114,7 +114,9 @@ internal static class NativeAcceptance
             else
             {
                 Program.Check(doc is not null,"Owned document missing.");
-                if(slot.Kind.StartsWith("batch-",StringComparison.Ordinal))
+                if(slot.Kind.StartsWith("external-",StringComparison.Ordinal))
+                    ExternalModelQualification.Run(slot,input,session,connection.Application,reports);
+                else if(slot.Kind.StartsWith("batch-",StringComparison.Ordinal))
                     BatchNativeQualification.Run(slot,input,session,connection.Application,reports,output,OnSessionFault,f=>scenarioFault=f,p=>publish=p);
                 else if(slot.Kind.StartsWith("scalar-",StringComparison.Ordinal))
                 {
