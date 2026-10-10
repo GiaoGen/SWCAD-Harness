@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][ValidatePattern('^acceptance-v[0-9]+$')][string]$Run,[string]$Schedule,[switch]$Replan,[switch]$ResumeCore,[switch]$ScalarA,[switch]$ScalarPublic,[ValidateSet('candidate','remaining','probe','boundaries')][string]$ScalarPhase='candidate')
+param([Parameter(Mandatory=$true)][ValidatePattern('^acceptance-v[0-9]+$')][string]$Run,[string]$Schedule,[switch]$Replan,[switch]$ResumeCore,[switch]$ScalarA,[switch]$ScalarPublic,[switch]$BatchB,[switch]$BatchPublic,[ValidateSet('candidate','remaining','probe','boundaries')][string]$ScalarPhase='candidate')
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'sdk-environment.ps1')
@@ -18,7 +18,8 @@ foreach($relative in $tracked){
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $target
 }
 Copy-Item -Path (Join-Path $root 'tests/CadHarness.ExternalEditing.Tests/bin/Release/net8.0-windows/*') -Destination "$output/bin/"
-if($ScalarA){$phase=if($ScalarPublic){'public'}else{$ScalarPhase};& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --prepare-scalar-a $Run $phase}
+if($BatchB){$phase=if($BatchPublic){'public'}else{'candidate'};& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --prepare-batch-b $Run $phase}
+elseif($ScalarA){$phase=if($ScalarPublic){'public'}else{$ScalarPhase};& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --prepare-scalar-a $Run $phase}
 elseif($ResumeCore){& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --resume-acceptance $Run $Schedule}
 elseif($Replan){& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --replan-acceptance $Run $Schedule}
 elseif($Schedule){& $dotnet "$output/bin/CadHarness.ExternalEditing.Tests.dll" $root --freeze-stage $Run $Schedule}

@@ -14,6 +14,7 @@ internal static class Program
             if (args[1] == "--assess-recovery") return RecoveryAudit.Assess(args[0],args[2]);
             if (args[1] == "--prepare-acceptance") return AcceptancePreparation.Run(args[0],args[2]);
             if (args[1] == "--prepare-scalar-a") return AcceptancePreparation.ScalarA(args[0],args[2],args.Length>3&&args[3]=="public",args.Length>3?args[3]:"candidate");
+            if (args[1] == "--prepare-batch-b") return AcceptancePreparation.BatchB(args[0],args[2],args.Length>3&&args[3]=="public");
             if (args[1] == "--freeze-stage") return AcceptancePreparation.Stage(args[0],args[2],args[3]);
             if (args[1] == "--replan-acceptance") return AcceptancePreparation.Replan(args[0],args[2],args[3]);
             if (args[1] == "--resume-acceptance") return AcceptancePreparation.Replan(args[0],args[2],args[3],true);

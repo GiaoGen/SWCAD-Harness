@@ -10,6 +10,9 @@ public sealed record NativeQualificationCandidate(NativeSubtype Subtype, Paramet
 
 public static class NativeQualificationCandidates
 {
+    // M14B: v14 candidate, native rebuild, publication and independent recovery proofs.
+    // Public dispatch is additionally verified by v15; this does not certify M14C histories.
+    public static bool AtomicEditSetQualified => true;
     // M14A scalar qualification: v3 depth, v6 scalars/cold and v8/v11 safety proofs.
     // These rows do not qualify EditSet or certify M14B/M14C external histories.
     public static IReadOnlyList<NativeQualificationCandidate> Rows { get; } = Array.AsReadOnly(new[]
@@ -51,5 +54,11 @@ public static class NativeQualificationCandidates
         ContractValidation.Require(System.Linq.Enumerable.Any(Rows, r => r.Qualified && r.Subtype == feature.Subtype &&
             r.Parameter == parameter && r.Accessor == scalar!.Accessor),
             "Native scalar subtype/parameter/accessor has not been qualified.", V03FailureCodes.CapabilityUnavailable);
+    }
+    public static void RequireExecutable(ObservedModel model, EditSetRequest request)
+    {
+        ContractValidation.Edits(request);
+        ContractValidation.Require(AtomicEditSetQualified, "External EditSet awaits M14B native qualification.", V03FailureCodes.CapabilityUnavailable);
+        foreach (var edit in request.Edits) RequireExecutable(model, edit.Target, edit.Parameter);
     }
 }

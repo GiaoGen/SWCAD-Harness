@@ -3,9 +3,52 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using CadHarness.State;
 
 internal static class AcceptancePreparation
 {
+    internal static int BatchB(string root,string run,bool publicEntry)
+    {
+        var output=Path.Combine(root,"artifacts","milestone14",run);
+        var original=AcceptanceFiles.Read<AcceptanceSchedule>(Path.Combine(root,"artifacts","milestone14","acceptance-v5","schedule.json"));
+        var budgetPath=Path.Combine(root,"artifacts","milestone14","native-budget.json");var budget=JsonSerializer.Deserialize<NativeTests.Budget>(File.ReadAllText(budgetPath))!;
+        Program.Check(budget.OwnedTitles.Count==0&&budget.MaximumNewParts==0,"Resolve native ownership before M14B.");
+        var grant=Path.Combine(output,"authorization.json");
+        Write(grant,new M14AdditionalBudget("0.3",true,14,27,int.MaxValue-27,int.MaxValue,0,
+            "No user limit. Explicit human authorization: M14B unlimited opens, bounded frozen slots, stop on repeated stagnation. Retain all prior cumulative counts; no new Parts, M14C or Factory extension."));
+        var core=original.Inputs.Single(i=>i.Id=="dev_core");
+        var final=AcceptanceFiles.Change(AcceptanceFiles.Change(AcceptanceFiles.Change(core,"hole_b",CadHarness.Ir.V03.ParameterKey.HoleDiameter,11),"hole_c",CadHarness.Ir.V03.ParameterKey.HoleDiameter,8),"pattern",CadHarness.Ir.V03.ParameterKey.PatternSpacing,24) with{Id="batch-final-r2"};
+        var published=AcceptanceFiles.Change(AcceptanceFiles.Change(core,"hole_b",CadHarness.Ir.V03.ParameterKey.HoleDiameter,14),"hole_c",CadHarness.Ir.V03.ParameterKey.HoleDiameter,10) with{Id="batch-published-r1"};
+        var inputs=original.Inputs.Concat(new[]{final,published,core with{Id="batch-restored-r0"}}).ToArray();
+        string Package(string id)=>Path.Combine(output,"packages",id);
+        var scenarios=publicEntry?new[]{new AcceptanceScenario("public","batch-sequence","dev_core",Package("public"),null,4,true),new AcceptanceScenario("public-cold","batch-cold","batch-final-r2",Package("public"),"public",1,false),
+                new AcceptanceScenario("boundaries","batch-boundary-faults","dev_core",Package("boundaries"),null,3,true),new AcceptanceScenario("rollback-recovery","batch-cold","batch-restored-r0",Package("boundaries"),"boundaries",1,false)}:
+            new[]{new AcceptanceScenario("candidate","batch-sequence","dev_core",Package("candidate"),null,3,false),new AcceptanceScenario("candidate-cold","batch-cold","batch-final-r2",Package("candidate"),"candidate",1,false),
+                new AcceptanceScenario("faults","batch-publication-faults","dev_core",Package("faults"),null,10,false),new AcceptanceScenario("postpointer-recovery","batch-cold","batch-published-r1",Package("faults"),"faults",1,false),
+                new AcceptanceScenario("native-rebuild","batch-native-rebuild","dev_core",Package("native-rebuild"),null,2,false),
+                new AcceptanceScenario("interrupted","batch-interrupted","dev_core",Package("interrupted"),null,1,false),new AcceptanceScenario("interrupted-recovery","batch-cold","batch-restored-r0",Package("interrupted"),"interrupted",1,false)};
+        var schedule=Path.Combine(output,"schedule.json");var plan=new AcceptanceSchedule("0.3",run,grant,inputs,scenarios);AcceptanceFiles.Validate(plan);Write(schedule,plan);
+        File.Copy(budgetPath,Path.Combine(output,"initial-budget.json"),false);
+        var registry=Path.Combine(root,"artifacts","fixture-factory","audits","final-v1","fixture-registry.json");using var data=JsonDocument.Parse(File.ReadAllText(registry));
+        var files=new List<FrozenFile>{AcceptanceFiles.Identity(grant),AcceptanceFiles.Identity(Path.Combine(output,"initial-budget.json")),AcceptanceFiles.Identity(registry)};
+        foreach(var f in data.RootElement.GetProperty("fixtures").EnumerateArray())foreach(var k in new[]{"manifest","proof","ready","nativePart"}){var file=f.GetProperty(k).Deserialize<FrozenFile>(AcceptanceFiles.Json)!;AcceptanceFiles.Verify(file);files.Add(file);}
+        foreach(var dir in new[]{"source","bin"})files.AddRange(Directory.EnumerateFiles(Path.Combine(output,dir),"*",SearchOption.AllDirectories).Select(AcceptanceFiles.Identity));
+        foreach(var input in inputs)files.Add(input.Source);
+        var m14a=Path.Combine(root,"artifacts","milestone14","acceptance-v13");
+        foreach(var slot in new[]{"scalar-public","public-cold"})
+        {
+            var proof=Path.Combine(m14a,"results",slot,"result.json");using var report=JsonDocument.Parse(File.ReadAllText(proof));
+            Program.Check(report.RootElement.GetProperty("passed").GetBoolean(),"M14A qualification must remain accepted.");files.Add(AcceptanceFiles.Identity(proof));
+        }
+        var corePackage=original.Scenarios.Single(s=>s.Id=="core").Package;using var pointer=JsonDocument.Parse(File.ReadAllText(Path.Combine(corePackage,"current.json")));
+        var manifest=pointer.RootElement.GetProperty("manifest").Deserialize<CadHarness.State.V03.ArtifactIdentity>(AcceptanceFiles.Json)!;
+        Program.Check(ManagedRevisionStore.Hash(manifest.Path)==manifest.Sha256&&!File.Exists(Path.Combine(corePackage,"recovery.json")),"M14A authority drifted/unresolved.");
+        using var authority=JsonDocument.Parse(File.ReadAllText(manifest.Path));Program.Check(authority.RootElement.GetProperty("revision").GetInt64()==11,"M14A current authority is not revision 11.");
+        Write(Path.Combine(output,"baseline.json"),new{head="458b6e1",budget.OpenAttempts,budget.DocumentsClosed,coreRevision=11,manifest=AcceptanceFiles.Identity(manifest.Path),working=AcceptanceFiles.Identity(Path.Combine(corePackage,"working","CADHarnessManagedPart.SLDPRT")),scope="M14B only; new isolated packages, M14A core is not edited"});
+        files.Add(AcceptanceFiles.Identity(Path.Combine(output,"baseline.json")));
+        Write(Path.Combine(output,"freeze.json"),new AcceptanceFreeze("0.3",run,DateTime.UtcNow,AcceptanceFiles.Identity(schedule),files.DistinctBy(f=>f.Path).ToArray(),AcceptanceFiles.Identity(budgetPath)));
+        Console.WriteLine($"M14B freeze: {scenarios.Sum(s=>s.MaximumOpens)} bounded opens; no new Parts; existing authority/counters retained.");return 0;
+    }
     internal static int ScalarA(string root,string run,bool publicEntry,string phase="candidate")
     {
         var output=Path.Combine(root,"artifacts","milestone14",run);

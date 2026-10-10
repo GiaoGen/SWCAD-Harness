@@ -36,6 +36,6 @@ public static class V03ContractCapabilities
     public static void RequireExecutable(EditSetRequest request, RequestMode mode)
     {
         RequireMode(mode, request.Mode, request.Origin); ContractValidation.Edits(request);
-        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "M11 EditSet contract has no qualified batch executor.");
+        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "EditSet execution requires a verified external Part session; contract acceptance alone grants no native capability.");
     }
 }

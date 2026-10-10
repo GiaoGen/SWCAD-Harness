@@ -86,7 +86,24 @@ internal static class PureTests
         Test("real duplicate profiles remain ambiguous", () => Program.Check(new[] { "OriginProfileFeature", "ProfileFeature", "ProfileFeature" }.Count(ExternalProfileOwnership.IsConsumingProfile) == 2, "Duplicate profiles silently accepted."));
         Test("unknown and 3D profile types remain unsupported", () => Program.Check(!ExternalProfileOwnership.IsConsumingProfile("3DProfileFeature") && !ExternalProfileOwnership.IsConsumingProfile("unrecognized"), "Subtype safety relaxed."));
         Test("qualified scalar descriptor permits exact accessor without mutation", () => { using var p = Package("production_gate"); NativeQualificationCandidates.RequireExecutable(p.CurrentExternal.Observation,"hole_a",ParameterKey.HoleDiameter); Program.Check(p.Mutations==0,"Gate mutated native state."); });
-        Test("qualified scalar rows do not enable public EditSet",()=>{using var p=Package("batch_gate");Refuse(()=>CadHarness.Planning.V03ContractCapabilities.RequireExecutable(Batch(p.CurrentExternal),RequestMode.EditSet));Program.Check(p.Mutations==0,"Batch gate mutated.");});
+        Test("contract-only batch cannot grant native session qualification",()=>{using var p=Package("batch_gate");Refuse(()=>CadHarness.Planning.V03ContractCapabilities.RequireExecutable(Batch(p.CurrentExternal),RequestMode.EditSet));Program.Check(p.Mutations==0,"Batch gate mutated.");});
+        Test("qualified atomic entry checks every target before mutation",()=>
+        {
+            using var p=Package("atomic_gate");var model=p.CurrentExternal.Observation;var request=Batch(p.CurrentExternal);
+            Program.Check(NativeQualificationCandidates.AtomicEditSetQualified,"M14B atomic capability is unavailable.");
+            NativeQualificationCandidates.RequireExecutable(model,request);
+            foreach(var variant in new[]{"missing","unsupported","duplicate","readonly","wrong-accessor"})
+            {
+                var rejected=variant switch{
+                    "missing"=>request with{Edits=new[]{request.Edits[0],request.Edits[1] with{Target="missing"}}},
+                    "unsupported"=>request with{Edits=new[]{request.Edits[0],request.Edits[1] with{Parameter=ParameterKey.CutDepth}}},
+                    "duplicate"=>request with{Edits=new[]{request.Edits[0],request.Edits[0]}},_=>request};
+                var observed=variant is "readonly" or "wrong-accessor"?model with{Features=model.Features.Select(f=>f.SemanticId==request.Edits[1].Target?
+                    variant=="readonly"?f with{EditSupport=EditSupport.ReadOnly}:f with{Parameters=f.Parameters.Select(v=>v with{Accessor=NativeAccessor.ExtrudeDepthDirection1}).ToArray()}:f).ToArray()}:model;
+                Refuse(()=>NativeQualificationCandidates.RequireExecutable(observed,rejected));
+            }
+            Program.Check(p.Mutations==0&&!File.Exists(p.Store.RecoveryPath),"Capability gate mutated/checkpointed.");
+        });
         foreach(var row in NativeQualificationCandidates.Rows)Test("exact scalar capability pair "+row.Parameter,()=>
         {
             using var p=Package("scalar_gate_"+row.Parameter);var model=p.CurrentExternal.Observation;var target=model.Features.Single(f=>f.SemanticId=="hole_a");
@@ -149,6 +166,19 @@ internal static class PureTests
             s = s with { Geometry = g, Observation = s.Observation with { Features = s.Observation.Features.Select(f => f with { Parameters = f.Parameters.Select(q => q.Key == ParameterKey.PatternCount ? q with { Value = 2 } : q).ToArray() }).ToArray() } };
             var r = new EditSetRequest("0.3",RequestMode.EditSet,ModelOrigin.External,s.Observation.Selection,new[] { new ScalarEdit("pattern",ParameterKey.PatternCount,ScalarUnit.Count,2,4), new ScalarEdit("pattern",ParameterKey.PatternSpacing,ScalarUnit.Millimeter,25,12) });
             Program.Check(ExternalEditPlanning.Prepare(s,r).Ordered[0].Edit.Parameter == ParameterKey.PatternSpacing,"unsafe intermediate order"); });
+        Test("final legal batch rejects when native seed dependency forbids safe intermediate order",()=>
+        {
+            using var p=Package("no_safe_order");var s=p.CurrentExternal;
+            ExternalEditPlanning.ValidateGeometry(s.Geometry with{Holes=s.Geometry.Holes.Select(h=>h.Target=="hole_a"?h with{DiameterMm=30}:h).ToArray(),Patterns=s.Geometry.Patterns.Select(pattern=>pattern with{SpacingMm=40}).ToArray()});
+            var request=new EditSetRequest("0.3",RequestMode.EditSet,ModelOrigin.External,s.Observation.Selection,new[]{new ScalarEdit("hole_a",ParameterKey.HoleDiameter,ScalarUnit.Millimeter,10,30),new ScalarEdit("pattern",ParameterKey.PatternSpacing,ScalarUnit.Millimeter,25,40)});
+            var backend=new ExternalEditTransactionBackend(p);var result=new RequestMutationTransaction<ExternalEditCommand,ExternalEditPreparation,ExternalEditRollback>(p.Store,backend).Execute(new(request,null));
+            Program.Check(!result.Succeeded&&result.FailureCode=="NO_SAFE_EDIT_ORDER"&&!result.MutationStarted&&backend.Checkpoints==0&&p.Mutations==0&&!File.Exists(p.Store.RecoveryPath),"Intermediate native order bypassed dependency/clearance.");
+        });
+        Test("cyclic declared dependencies reject before checkpoint",()=>
+        {
+            using var p=Package("dependency_cycle");var s=p.CurrentExternal;s=s with{Observation=s.Observation with{Dependencies=s.Observation.Dependencies.Append(new("pattern","hole_a",NativeDependencyKind.ParentChild,Evidence())).ToArray()}};
+            Refuse(()=>ExternalEditPlanning.Prepare(s,Batch(s)));Program.Check(p.Mutations==0&&!File.Exists(p.Store.RecoveryPath),"Dependency conflict mutated state.");
+        });
         Test("rename not retargeting", () => { using var p = Package("rename"); var s=p.CurrentExternal; s=s with { Observation=s.Observation with { Features=s.Observation.Features.Select(f=>f with { DisplayName="renamed" }).ToArray() } }; Program.Check(ExternalEditPlanning.Prepare(s,Batch(s)).Ordered.Count==2,"name binding"); });
         Test("batch one checkpoint one revision no program", () => { using var p = Package("success"); var result = Execute(p); Program.Check(result.Result.Succeeded && result.Backend.Checkpoints == 1 && result.Backend.PartialNativeSteps.Count == 2 && p.Store.Load().Revision == 1, "single aggregate commit");
             Program.Check(p.Store.ReadCurrent().Manifest.Program is null && p.Store.ReadCurrent().External is not null, "fabricated program"); Refuse(() => _ = p.Store.ReadCurrent().Program); });

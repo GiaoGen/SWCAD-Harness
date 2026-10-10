@@ -34,7 +34,7 @@ internal static class NativeAcceptance
             new{binary=AcceptanceFiles.Identity(typeof(Program).Assembly.Location),freeze=AcceptanceFiles.Identity(Path.Combine(run,"freeze.json")),schedule=AcceptanceFiles.Identity(schedulePath)},
             ()=>new{ledger.Data.OpenAttempts,ledger.Data.DocumentsClosed,ledger.Data.MaximumOpenCycles,owned=ledger.Data.OwnedTitles.ToArray()});
         ExternalPartSession? session=null;
-        DurableFaultPoint? publish=null;bool interrupt=false;string? failure=null;
+        DurableFaultPoint? publish=null;bool interrupt=false;string? failure=null;Action<ExternalEditFault>? scenarioFault=null;
         void OnPublish(DurableFaultPoint point)
         {
             reports.Add(new{step="durable-publish-boundary",point});
@@ -43,6 +43,7 @@ internal static class NativeAcceptance
         void OnSessionFault(ExternalEditFault point)
         {
             reports.Add(new{step="session-boundary",point});
+            scenarioFault?.Invoke(point);
             if(interrupt&&point==ExternalEditFault.Reopen)throw new StateException("INJECTED_REOPEN_INTERRUPTION","Interrupted before OpenDoc6; recovery marker retained.");
         }
         try
@@ -113,7 +114,9 @@ internal static class NativeAcceptance
             else
             {
                 Program.Check(doc is not null,"Owned document missing.");
-                if(slot.Kind.StartsWith("scalar-",StringComparison.Ordinal))
+                if(slot.Kind.StartsWith("batch-",StringComparison.Ordinal))
+                    BatchNativeQualification.Run(slot,input,session,connection.Application,reports,output,OnSessionFault,f=>scenarioFault=f,p=>publish=p);
+                else if(slot.Kind.StartsWith("scalar-",StringComparison.Ordinal))
                 {
                     reports.Add(new{step="scalar-baseline",revision=session.Store.Load().Revision,oracle=ReadOracle(doc!,input),controller=System.Environment.ProcessId});
                     if(slot.Kind=="scalar-candidate-v4")

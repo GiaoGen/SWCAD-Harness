@@ -115,11 +115,14 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
     {
         Check();
         if (Status != ReopenStatus.Editable) throw new StateException(V03FailureCodes.IncompleteDurablePublish, "Session is not editable; recover in a fresh controller.");
-        // Scalar qualification must not implicitly open the unqualified batch path.
+        // Batch qualification is separate; every target still requires a qualified scalar accessor.
         if (command.Batch is not null)
-            throw new ContractException(V03FailureCodes.CapabilityUnavailable, "External EditSet awaits M14B native qualification.");
-        ContractValidation.Edit(command.Scalar!);
-        NativeQualificationCandidates.RequireExecutable(CurrentExternal.Observation, command.Scalar!.Edit.Target, command.Scalar.Edit.Parameter);
+            NativeQualificationCandidates.RequireExecutable(CurrentExternal.Observation, command.Batch);
+        else
+        {
+            ContractValidation.Edit(command.Scalar!);
+            NativeQualificationCandidates.RequireExecutable(CurrentExternal.Observation, command.Scalar!.Edit.Target, command.Scalar.Edit.Parameter);
+        }
         var backend = new ExternalEditTransactionBackend(this, editFault);
         var result = new RequestMutationTransaction<ExternalEditCommand, ExternalEditPreparation, ExternalEditRollback>(Store, backend).Execute(command);
         if (File.Exists(Store.RecoveryPath) || result.RollbackAttempted && !result.RollbackSucceeded) Invalidate();
