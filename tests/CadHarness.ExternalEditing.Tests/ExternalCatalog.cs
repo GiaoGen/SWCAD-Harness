@@ -141,7 +141,9 @@ internal static class ExternalCatalog
                         {
                             Program.Check(++visits<=512,"Diagnostic feature bound exceeded.");
                             var parents=f.GetParents();var children=f.GetChildren();
-                            features.Add(new{feature=Describe(f),suppressed=f.IsSuppressed(),parentArrayReturned=parents is Array,childArrayReturned=children is Array,
+                            var parentCount=f.IGetParentCount();var childCount=f.IGetChildCount();
+                            Program.Check(parentCount==NativeEditOracle.Items<IFeature>(parents).Count()&&childCount==NativeEditOracle.Items<IFeature>(children).Count(),"Native dependency count/array mismatch; no absence proof allowed.");
+                            features.Add(new{feature=Describe(f),suppressed=f.IsSuppressed(),parentCount,childCount,parentArrayReturned=parents is Array,childArrayReturned=children is Array,
                                 parents=NativeEditOracle.Items<IFeature>(parents).Select(Describe).ToArray(),children=NativeEditOracle.Items<IFeature>(children).Select(Describe).ToArray()});
                         }
                         journal.Add(new{step=phase,configuration=doc.ConfigurationManager.ActiveConfiguration.Name,configurations=doc.GetConfigurationNames(),hasDesignTable=doc.Extension.HasDesignTable(),

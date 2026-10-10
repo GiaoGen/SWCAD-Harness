@@ -48,7 +48,7 @@ internal static class NativeAcceptance
         }
         try
         {
-            if(slot.Kind=="origin-driver-probe")
+            if(slot.Kind is "origin-driver-probe" or "read-only-oracle")
             {
                 var working=Path.Combine(slot.Package,"working","CADHarnessManagedPart.SLDPRT");
                 Program.Check(connection.Application.GetOpenDocumentByName(input.Source.Path) is null,"Never inspect an engineer's open source.");
@@ -60,6 +60,16 @@ internal static class NativeAcceptance
                 try
                 {
                     Program.Check(errors==0&&warnings==0&&probe.GetPathName()==working&&!probe.GetSaveFlag(),"Probe document identity/open failed.");
+                    if(slot.Kind=="read-only-oracle")
+                    {
+                        var equations=(IEquationMgr)probe.GetEquationMgr();
+                        reports.Add(new{step="equivalent-history-native-oracle",oracle=NativeEditOracle.Read(probe,input,m=>reports.Add(new{step="oracle-measurement",measurement=m})),
+                            nativeVersion=connection.Application.VersionHistory(input.Source.Path),runtimeVersion=connection.Application.RevisionNumber(),
+                            equationHistory=Enumerable.Range(0,equations.GetCount()).Select(i=>equations.Equation[i]).ToArray()});
+                        Program.Check(!probe.GetSaveFlag()&&ManagedRevisionStore.Hash(working)==input.Source.Sha256,"Read-only history probe changed the native file.");
+                    }
+                    else
+                    {
                     var visited=new HashSet<string>();
                     void Walk(IFeature? f,bool sub)
                     {
@@ -90,12 +100,13 @@ internal static class NativeAcceptance
                         }
                     }
                     Walk(probe.FirstFeature() as IFeature,false);
+                    }
                 }
                 finally{var title=probe.GetTitle();connection.Application.CloseDoc(title);Program.Check(connection.Application.GetOpenDocumentByName(working) is null,"Probe remained open.");ledger.Closed(working,title);if(originalActive is not null){var e=0;connection.Application.ActivateDoc3(originalActive,false,(int)swRebuildOnActivation_e.swDontRebuildActiveDoc,ref e);Program.Check(e==0,"Probe active document restore failed.");}}
             }
             else
             {
-            var opened=slot.PreviousPackage is not null||slot.Kind is "candidate-continuation" or "scalar-candidate-v4" or "scalar-public"?ExternalPartSession.Open(connection,slot.Package,Path.Combine(slot.Package,"working","CADHarnessManagedPart.SLDPRT"),ledger,OnPublish,OnSessionFault):
+            var opened=slot.PreviousPackage is not null||slot.Kind is "candidate-continuation" or "scalar-candidate-v4" or "scalar-public" or "scalar-manual-closeout"?ExternalPartSession.Open(connection,slot.Package,Path.Combine(slot.Package,"working","CADHarnessManagedPart.SLDPRT"),ledger,OnPublish,OnSessionFault):
                 ExternalPartSession.CreateCopy(connection,slot.Package,input.Source.Path,input.Configuration,ledger,OnPublish,OnSessionFault);
             session=opened.Session;
             if(session is not null)session.EvidenceSink=e=>reports.Add(new{step="native-event",evidence=e});
@@ -121,7 +132,24 @@ internal static class NativeAcceptance
                 else if(slot.Kind.StartsWith("scalar-",StringComparison.Ordinal))
                 {
                     reports.Add(new{step="scalar-baseline",revision=session.Store.Load().Revision,oracle=ReadOracle(doc!,input),controller=System.Environment.ProcessId});
-                    if(slot.Kind=="scalar-candidate-v4")
+                    if(slot.Kind=="scalar-manual-closeout")
+                    {
+                        Program.Check(slot.PublicEntry&&session.Store.Load().Revision==2&&NativeQualificationCandidates.Rows.All(r=>r.Qualified),"Manual closeout requires verified revision 2 and qualified public scalars.");
+                        var final=schedule.Inputs.Single(i=>i.Id=="manual-final-r5");
+                        Apply("manual-public-depth",new[]{("host",ParameterKey.ExtrusionDepth,final.Depth)});
+                        Apply("manual-public-count",new[]{("pattern",ParameterKey.PatternCount,(double)final.Pattern.Count)});
+                        Apply("manual-public-spacing",new[]{("pattern",ParameterKey.PatternSpacing,final.Pattern.Spacing)});
+                    }
+                    else if(slot.Kind=="scalar-manual-closeout-cold")
+                    {
+                        Program.Check(session.Store.Load().Revision==5&&!File.Exists(session.Store.RecoveryPath),"Manual closeout cold authority differs.");
+                        var revision=session.Store.ReadCurrent();var adapter=ExternalEditPlanning.Adapter(revision.External!);
+                        Program.Check(revision.Manifest.Revision==revision.State.Revision&&adapter.Revision==5&&
+                            adapter.Parameters.OrderBy(p=>p.SemanticId).SequenceEqual(revision.State.Parameters.OrderBy(p=>p.SemanticId))&&
+                            ManagedRevisionStore.Hash(session.Store.WorkingPath)==revision.Manifest.NativePart.Sha256,"Manual closeout native/state/companion/manifest differ.");
+                        reports.Add(new{step="manual-independent-cold-durable",revision.Manifest,revision.State.Parameters,controller=System.Environment.ProcessId});
+                    }
+                    else if(slot.Kind=="scalar-candidate-v4")
                     {
                         Program.Check(session.Store.Load().Revision==4&&NativeQualificationCandidates.Rows.All(r=>!r.Qualified),"Candidate must start at revision 4 with public gate closed.");
                         ScalarNegatives(session,input,reports,doc!);
