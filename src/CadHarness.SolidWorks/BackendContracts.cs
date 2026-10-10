@@ -37,12 +37,14 @@ public sealed partial class SolidWorksExecutionContext
 {
     private readonly int ownerThread = Environment.CurrentManagedThreadId;
     public IModelDoc2 Document { get; }
+    internal ISldWorks? Application { get; }
     internal IFeature? CreatedFeature { get; set; }
-    public SolidWorksExecutionContext(IModelDoc2 document)
+    public SolidWorksExecutionContext(IModelDoc2 document, ISldWorks? application = null)
     {
         if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
             throw new InvalidOperationException("SOLIDWORKS execution requires an STA thread.");
         Document = document ?? throw new ArgumentNullException(nameof(document));
+        Application = application;
     }
     internal void CheckThread()
     {

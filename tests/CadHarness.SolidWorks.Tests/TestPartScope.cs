@@ -14,6 +14,7 @@ internal sealed class TestPartScope
     private IModelDoc2? owned;
     private string? ownedTitle;
     internal bool Created { get; private set; }
+    internal bool Opened { get; private set; }
     internal bool Closed { get; private set; }
     internal bool OriginalActiveRestored { get; private set; }
     internal string? CleanupError { get; private set; }
@@ -37,6 +38,20 @@ internal sealed class TestPartScope
         budget.RenameOwned(ownedTitle, actualTitle);
         ownedTitle = actualTitle;
         return context;
+    }
+    internal SolidWorksExecutionContext OpenOwnedCopy(string path, int maximumOpenCycles)
+    {
+        if (app.GetDocuments() is Array docs && docs.Cast<object>().Cast<IModelDoc2>().Any(d => string.Equals(d.GetPathName(), path, StringComparison.OrdinalIgnoreCase)))
+            throw new TestFailure("TEST_RESOURCE_LIMIT", "Never take ownership of an already-open document.");
+        budget.ReserveOpen(maximumOpenCycles);
+        var errors = 0; var warnings = 0;
+        var document = (IModelDoc2?)app.OpenDoc6(path, (int)swDocumentTypes_e.swDocPART, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref errors, ref warnings);
+        if (document is not null)
+        {
+            owned = document; ownedTitle = document.GetTitle(); Opened = true; budget.RegisterOpened(ownedTitle);
+        }
+        if (document is null || errors != 0 || warnings != 0) throw new TestFailure("NATIVE_OPEN_FAILED", $"Owned-copy open: errors={errors}, warnings={warnings}.");
+        return new(document, app);
     }
     internal void Cleanup()
     {

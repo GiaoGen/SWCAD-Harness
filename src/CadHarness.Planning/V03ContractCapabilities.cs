@@ -11,8 +11,8 @@ public static class V03ContractCapabilities
 {
     public static IReadOnlyList<ConstructionContractDescriptor> Construction { get; } = Array.AsReadOnly(new[]
     {
-        new ConstructionContractDescriptor(ConstructionKind.CreateSketch, "create_sketch", "Bound closed planar profile with declared driving constraints", false),
-        new ConstructionContractDescriptor(ConstructionKind.CreateDatumPlane, "create_datum_plane", "Bound right-handed offset reference plane", false),
+        new ConstructionContractDescriptor(ConstructionKind.CreateSketch, "create_sketch", "Bound closed planar profile with declared driving constraints", true),
+        new ConstructionContractDescriptor(ConstructionKind.CreateDatumPlane, "create_datum_plane", "Bound right-handed offset reference plane", true),
         new ConstructionContractDescriptor(ConstructionKind.CreateExtrude, "create_extrude", "Initial single-body extrusion of a bound generic sketch", false),
         new ConstructionContractDescriptor(ConstructionKind.CreateRevolvedBoss, "create_revolved_boss", "Single-body revolution about an in-plane profile axis", false),
         new ConstructionContractDescriptor(ConstructionKind.CreateAdditiveBoss, "create_additive_boss", "Positive-depth extrusion merged with a tracked host body", false),
@@ -27,11 +27,17 @@ public static class V03ContractCapabilities
             (actual != RequestMode.ExternalScalarEdit || origin == ModelOrigin.External), "Request mode/origin mismatch.", V03FailureCodes.ModeMismatch);
     }
 
-    // Contract acceptance is separate from executable runtime projection until native qualification.
+    public static void RequirePlanarOperation(ConstructionKind kind)
+    {
+        ContractValidation.Require(kind is ConstructionKind.CreateSketch or ConstructionKind.CreateDatumPlane,
+            "Only M15 planar construction is qualified on an explicit native execution context.", V03FailureCodes.CapabilityUnavailable);
+    }
+
+    // Operation qualification does not provide a whole-program feature engine.
     public static void RequireExecutable(ConstructionProgram program, RequestMode mode)
     {
         RequireMode(mode, program.Mode, program.Origin); ContractValidation.Program(program);
-        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "M11 construction contracts have no registered native handlers.");
+        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "Use the qualified planar operations on a verified native execution context; whole-program construction awaits feature execution qualification.");
     }
     public static void RequireExecutable(EditSetRequest request, RequestMode mode)
     {

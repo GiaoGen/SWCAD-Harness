@@ -62,7 +62,7 @@ public sealed class SolidWorksConnection : IDisposable
             throw new ArgumentException("An existing .prtdot template is required.", nameof(template));
         var document = (IModelDoc2?)Application.NewDocument(template, 0, 0, 0)
             ?? throw new COMException("SOLIDWORKS NewDocument returned no Part.");
-        return new(document);
+        return new(document, Application);
     }
 
     private void CheckThread()

@@ -157,7 +157,13 @@ internal static class Program
         Add("qualified scalar descriptor passes capability gate only", () => NativeQualificationCandidates.RequireExecutable(Observation, "boss", ParameterKey.ExtrusionDepth));
         Add("read-only target rejects before executable gate", () => Bad(() => NativeQualificationCandidates.RequireExecutable(Observation, "unknown_feature", ParameterKey.ExtrusionDepth), V03FailureCodes.ObservedOnlyTarget));
         Add("only four M14A scalar pairs qualified", () => Assert(NativeQualificationCandidates.Rows.Count == 4 && NativeQualificationCandidates.Rows.All(r => r.Qualified)));
-        Add("contract operations do not widen old executable enums/registry", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 && V03ContractCapabilities.Construction.All(c => !c.Executable)));
+        Add("M15 planar qualification does not widen old registry or M16 features", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 && V03ContractCapabilities.Construction.All(c => c.Executable == (c.Kind is ConstructionKind.CreateSketch or ConstructionKind.CreateDatumPlane))));
+        Add("M15 planar operation gate keeps feature kinds closed", () =>
+        {
+            V03ContractCapabilities.RequirePlanarOperation(ConstructionKind.CreateSketch);
+            V03ContractCapabilities.RequirePlanarOperation(ConstructionKind.CreateDatumPlane);
+            Bad(() => V03ContractCapabilities.RequirePlanarOperation(ConstructionKind.CreateExtrudedCut), V03FailureCodes.CapabilityUnavailable);
+        });
         Add("legacy parser rejects new operation and schema version", () =>
         { var codec = new CadProgramJson(); Assert(!codec.Parse(LegacyProgram.Replace("create_extrude", "create_revolved_boss")).IsValid); Assert(!codec.Parse(LegacyProgram.Replace("0.2", "0.3")).IsValid); });
         Add("legacy positive ParameterNode invariant survives", () =>

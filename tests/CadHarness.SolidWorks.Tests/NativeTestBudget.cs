@@ -11,6 +11,7 @@ internal sealed record BudgetSnapshot
     public int CreationAttempts { get; set; }
     public int PartsCreated { get; set; }
     public int PartsClosed { get; set; }
+    public int OpenAttempts { get; set; }
     public List<string> OpenTestOwnedTitles { get; init; } = new();
 }
 
@@ -33,7 +34,7 @@ internal sealed class NativeTestBudget : IDisposable
             Snapshot = ledger.Length == 0 ? new() : JsonSerializer.Deserialize<BudgetSnapshot>(ledger)
                 ?? throw new InvalidDataException("Native test budget ledger is invalid.");
             if (Snapshot.CreationAttempts < 0 || Snapshot.PartsCreated < 0 || Snapshot.PartsClosed < 0 ||
-                Snapshot.PartsClosed > Snapshot.PartsCreated || Snapshot.PartsCreated > Snapshot.CreationAttempts)
+                Snapshot.OpenAttempts < 0 || Snapshot.PartsClosed > Snapshot.PartsCreated + Snapshot.OpenAttempts || Snapshot.PartsCreated > Snapshot.CreationAttempts)
                 throw new InvalidDataException("Native test budget counters are invalid.");
         }
         catch { ledger.Dispose(); throw; }
@@ -49,6 +50,13 @@ internal sealed class NativeTestBudget : IDisposable
     }
     internal void RegisterCreated(string title)
     { Snapshot.PartsCreated++; Snapshot.OpenTestOwnedTitles.Add(title); Write(); }
+    internal void ReserveOpen(int maximum)
+    {
+        if (Snapshot.OpenAttempts >= maximum || Snapshot.OpenTestOwnedTitles.Count != 0) throw new TestFailure("NATIVE_BUDGET_EXHAUSTED", "Owned reopen budget or lifecycle guard refused.");
+        Snapshot.OpenAttempts++; Write();
+    }
+    internal void RegisterOpened(string title)
+    { Snapshot.OpenTestOwnedTitles.Add(title); Write(); }
     internal void RenameOwned(string oldTitle, string newTitle)
     { Snapshot.OpenTestOwnedTitles.Remove(oldTitle); Snapshot.OpenTestOwnedTitles.Add(newTitle); Write(); }
     internal void RegisterClosed(string title)
