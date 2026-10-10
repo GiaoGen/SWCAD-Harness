@@ -114,6 +114,13 @@ internal static class ExternalCatalog
                     {
                         object Describe(IFeature f)
                         {
+                            var reference=doc.Extension.GetPersistReference3(f) as byte[];var status=-1;
+                            var resolved=reference is null?null:doc.Extension.GetObjectByPersistReference3(reference,out status) as IFeature;
+                            var roundtrip=resolved is null?null:doc.Extension.GetPersistReference3(resolved) as byte[];
+                            var nativeError=f.GetErrorCode2(out var warning);
+                            var sketch=f.GetSpecificFeature2() as ISketch;
+                            var segments=sketch is null?Array.Empty<ISketchSegment>():NativeEditOracle.Items<ISketchSegment>(sketch.GetSketchSegments()).Where(s=>!s.ConstructionGeometry).ToArray();
+                            var extrude=f.GetDefinition() as IExtrudeFeatureData2;
                             var dimensions=new System.Collections.Generic.List<object>();var d=f.GetFirstDisplayDimension() as IDisplayDimension;var n=0;
                             while(d is not null)
                             {
@@ -122,14 +129,20 @@ internal static class ExternalCatalog
                                     reference=doc.Extension.GetPersistReference3(dimension) is byte[] dr?Convert.ToBase64String(dr):null});
                                 d=f.GetNextDisplayDimension(d) as IDisplayDimension;
                             }
-                            return new{name=f.Name,nativeType=f.GetTypeName2(),reference=doc.Extension.GetPersistReference3(f) is byte[] b?Convert.ToBase64String(b):null,dimensions};
+                            return new{name=f.Name,nativeType=f.GetTypeName2(),underlyingType=f.GetTypeName(),reference=reference is null?null:Convert.ToBase64String(reference),
+                                referenceStatus=status,referenceRoundtrips=reference is not null&&status==0&&roundtrip is not null&&reference.SequenceEqual(roundtrip),
+                                nativeError,warning,specificSketch=sketch is not null,activeSegments=segments.Length,
+                                activeCircles=segments.OfType<ISketchArc>().Count(a=>a.IsCircle()==1),
+                                extrusion=extrude is null?null:new{boss=extrude.IsBossFeature(),baseExtrude=extrude.IsBaseExtrude(),endCondition=extrude.GetEndCondition(true),
+                                    thin=extrude.IsThinFeature(),bothDirections=extrude.BothDirections,depthMeters=extrude.GetDepth(true)},dimensions};
                         }
                         var features=new System.Collections.Generic.List<object>();var visits=0;
                         for(var f=doc.FirstFeature() as IFeature;f is not null;f=f.GetNextFeature() as IFeature)
                         {
                             Program.Check(++visits<=512,"Diagnostic feature bound exceeded.");
-                            features.Add(new{feature=Describe(f),suppressed=f.IsSuppressed(),parents=NativeEditOracle.Items<IFeature>(f.GetParents()).Select(Describe).ToArray(),
-                                children=NativeEditOracle.Items<IFeature>(f.GetChildren()).Select(Describe).ToArray()});
+                            var parents=f.GetParents();var children=f.GetChildren();
+                            features.Add(new{feature=Describe(f),suppressed=f.IsSuppressed(),parentArrayReturned=parents is Array,childArrayReturned=children is Array,
+                                parents=NativeEditOracle.Items<IFeature>(parents).Select(Describe).ToArray(),children=NativeEditOracle.Items<IFeature>(children).Select(Describe).ToArray()});
                         }
                         journal.Add(new{step=phase,configuration=doc.ConfigurationManager.ActiveConfiguration.Name,configurations=doc.GetConfigurationNames(),hasDesignTable=doc.Extension.HasDesignTable(),
                             features,equations=((IEquationMgr)doc.GetEquationMgr()).GetCount()});
