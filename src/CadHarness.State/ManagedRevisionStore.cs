@@ -14,7 +14,7 @@ public sealed record ManagedRevisionPointer(string SchemaVersion, ArtifactIdenti
 public sealed record ManagedRecoveryMarker(string SchemaVersion, ArtifactIdentity? PreviousManifest, long PreviousRevision,
     string WorkingPath, string CandidateDirectory, long CandidateRevision);
 public sealed record ManagedRevision(RevisionManifest Manifest, ArtifactIdentity ManifestArtifact, CadState State,
-    CadProgram? ConstructionProgram, ExternalEditState? External = null)
+    CadProgram? ConstructionProgram, ExternalEditState? External = null, GenericRevisionPackage? Generic = null)
 {
     public CadProgram Program => ConstructionProgram ?? throw new StateException(V03FailureCodes.ModeMismatch,
         "An external observed revision has no construction program.");
@@ -39,6 +39,15 @@ public interface IObservedRevisionNative : IManagedRevisionNative
     CadProgram IManagedRevisionNative.CurrentProgram => throw new StateException(V03FailureCodes.ModeMismatch, "External state has no CadProgram.");
     void IManagedRevisionNative.VerifySavedRevision(CadState state, CadProgram program) =>
         throw new StateException(V03FailureCodes.ModeMismatch, "Cannot reinterpret an external revision as managed.");
+}
+
+public interface IGenericRevisionNative : IManagedRevisionNative
+{
+    GenericRevisionPackage CurrentGeneric { get; }
+    void VerifySavedGeneric(GenericRevisionPackage package);
+    CadProgram IManagedRevisionNative.CurrentProgram => throw new StateException(V03FailureCodes.ModeMismatch, "Generic construction is not a legacy CadProgram.");
+    void IManagedRevisionNative.VerifySavedRevision(CadState state, CadProgram program) =>
+        throw new StateException(V03FailureCodes.ModeMismatch, "Cannot reinterpret Generic as legacy managed state.");
 }
 
 // Native save and JSON state are not atomic together. Only the small pointer is
@@ -90,8 +99,23 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
     public void Initialize(CadState state)
     {
         Check();
-        if (File.Exists(PointerPath) || File.Exists(RecoveryPath)) throw new StateException("TRANSACTION_BUSY", "A package already exists or needs recovery.");
-        ValidateStatePath(state); WriteMarker(null, state.Revision); Publish(state, null);
+        if (File.Exists(PointerPath)) throw new StateException("TRANSACTION_BUSY", "A package already exists.");
+        ValidateStatePath(state);
+        if (File.Exists(RecoveryPath))
+        {
+            var marker = ReadMarker();
+            if (native is not IGenericRevisionNative || marker.PreviousManifest is not null || marker.CandidateRevision != state.Revision)
+                throw new StateException("TRANSACTION_BUSY", "Initial checkpoint does not match this Generic publication.");
+        }
+        else WriteMarker(null, state.Revision);
+        Publish(state, null);
+    }
+    public void PrepareInitialGenericCheckpoint(long candidateRevision)
+    {
+        Check();
+        if (native is not IGenericRevisionNative || File.Exists(PointerPath) || File.Exists(RecoveryPath) || candidateRevision < 1)
+            throw new StateException("TRANSACTION_BUSY", "Initial Generic checkpoint requires a new unpublished package.");
+        WriteMarker(null, candidateRevision);
     }
     public void Commit(CadState state)
     {
@@ -123,6 +147,14 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
             ValidateNativeAssociation(state);
             WriteNew(statePath, ContractJson.Write(observed.CurrentExternal, ExternalEditPlanning.Validate));
         }
+        else if (native is IGenericRevisionNative generic)
+        {
+            var package = generic.CurrentGeneric;
+            WriteNew(statePath, ContractJson.Write(package, GenericRevisionValidation.Validate));
+            var programPath = Path.Combine(directory, "program.json");
+            WriteNew(programPath, ContractJson.Write(package.State.Program, ContractValidation.Program));
+            programArtifact = Artifact(programPath, "0.3");
+        }
         else
         {
             new AtomicStateStore(statePath).Commit(state);
@@ -134,10 +166,11 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         }
         fault?.Invoke(DurableFaultPoint.AfterStateFlush);
         if (native is IObservedRevisionNative saved) saved.VerifySavedExternal(saved.CurrentExternal);
+        else if (native is IGenericRevisionNative genericSaved) genericSaved.VerifySavedGeneric(genericSaved.CurrentGeneric);
         else native.VerifySavedRevision(state, native.CurrentProgram);
         if (Hash(WorkingPath) != Hash(nativePath)) throw new StateException(V03FailureCodes.SourceFileDrift, "Native bytes changed during saved-package verification.");
         var manifest = new RevisionManifest("0.3", native is IObservedRevisionNative ? ModelOrigin.External : ModelOrigin.Harness, state.Document.DocumentId, state.Document.ConfigurationId,
-            state.Document.ConfigurationName, state.Revision, Fingerprint(nativePath), Artifact(statePath, native is IObservedRevisionNative ? "0.3" : "0.2"), programArtifact,
+            state.Document.ConfigurationName, state.Revision, Fingerprint(nativePath), Artifact(statePath, native is IObservedRevisionNative or IGenericRevisionNative ? "0.3" : "0.2"), programArtifact,
             previous?.ManifestArtifact.Sha256, PublishStage.PointerPublished);
         var manifestPath = Path.Combine(directory, "manifest.json");
         WriteNew(manifestPath, ContractJson.Write(manifest, ObservedStateValidation.Manifest));
@@ -203,6 +236,7 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         RequireRecoveryAuthority(inspection);
         VerifyWorking(revision);
         if (native is IObservedRevisionNative observed && revision.External is not null) observed.VerifySavedExternal(revision.External);
+        else if (native is IGenericRevisionNative generic && revision.Generic is not null) generic.VerifySavedGeneric(revision.Generic);
         else native.VerifySavedRevision(revision.State, revision.Program);
         VerifyWorking(revision);
         WritePointer(revision.ManifestArtifact); File.Delete(RecoveryPath);
@@ -225,6 +259,13 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         GuardPath(WorkingPath, Root);
         Directory.CreateDirectory(Path.GetDirectoryName(WorkingPath)!);
         GuardPath(WorkingPath, Root);
+    }
+    public void PrepareNewGenericWorkingPath()
+    {
+        Check();
+        if (native is not IGenericRevisionNative || File.Exists(WorkingPath) || File.Exists(PointerPath) || File.Exists(RecoveryPath))
+            throw new StateException("TRANSACTION_BUSY", "Generic creation requires an unused, guarded working path.");
+        PrepareWorkingDirectory();
     }
     public ManagedRevision ReadRevision(ArtifactIdentity artifact)
     {
@@ -251,6 +292,18 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
         }
         if (manifest.Program is null) throw new StateException(V03FailureCodes.ModeMismatch, "Managed revision requires a program.");
         GuardArtifact(manifest.Program, directory);
+        if (manifest.State.SchemaVersion == "0.3" && manifest.Program.SchemaVersion == "0.3")
+        {
+            if (native is not IGenericRevisionNative) throw new StateException(V03FailureCodes.ModeMismatch, "Generic package requires an explicit Generic controller.");
+            VerifyFingerprint(manifest.NativePart); VerifyArtifact(manifest.State); VerifyArtifact(manifest.Program);
+            var generic = ContractJson.Read<GenericRevisionPackage>(ReadText(manifest.State.Path), GenericRevisionValidation.Validate, MaximumMetadataBytes);
+            var program = ContractJson.Read<ConstructionProgram>(ReadText(manifest.Program.Path), ContractValidation.Program, MaximumMetadataBytes);
+            if (ContractJson.Write(program, ContractValidation.Program) != ContractJson.Write(generic.State.Program, ContractValidation.Program))
+                throw new StateException("STATE_DRIFT_DETECTED", "Generic program artifact differs from companion.");
+            var envelope = GenericRevisionValidation.Envelope(generic.State); ValidateStatePath(envelope); VerifyManifestIdentity(manifest, envelope);
+            return new(manifest, artifact, envelope, null, null, generic);
+        }
+        if (native is IGenericRevisionNative) throw new StateException(V03FailureCodes.ModeMismatch, "Generic controller cannot open a legacy package.");
         if (manifest.State.SchemaVersion != "0.2" || manifest.Program.SchemaVersion != "0.2")
             throw new StateException(FailureCodes.OperationUnsupported, "M12 reopens qualified v0.2 programs/state with a v0.3 manifest.");
         VerifyFingerprint(manifest.NativePart); VerifyArtifact(manifest.State); VerifyArtifact(manifest.Program);
@@ -269,6 +322,14 @@ public sealed class ManagedRevisionStore : ICadStateStore, IDisposable
     }
     private void ValidateNativeAssociation(CadState state)
     {
+        if (native is IGenericRevisionNative generic)
+        {
+            GenericRevisionValidation.Validate(generic.CurrentGeneric);
+            var envelope = GenericRevisionValidation.Envelope(generic.CurrentGeneric.State);
+            if (System.Text.Json.JsonSerializer.Serialize(state) != System.Text.Json.JsonSerializer.Serialize(envelope))
+                throw new StateException("STATE_DRIFT_DETECTED", "Generic publication identity/revision differs.");
+            return;
+        }
         if (native is not IObservedRevisionNative observed) { ValidateAssociation(state, native.CurrentProgram); return; }
         var adapter = ExternalEditPlanning.Adapter(observed.CurrentExternal);
         if (!state.Document.Matches(adapter.Document) || state.Revision != adapter.Revision ||

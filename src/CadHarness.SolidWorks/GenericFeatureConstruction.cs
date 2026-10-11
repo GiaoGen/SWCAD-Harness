@@ -30,6 +30,8 @@ public sealed partial class SolidWorksExecutionContext
     private readonly Dictionary<string, GenericFeatureBinding> genericFeatures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativePersistentReference> genericDatums = new(StringComparer.Ordinal);
     private GenericConstructionState? genericState;
+    internal Action? GenericDurableCheckpoint { get; set; }
+    internal Action<GenericConstructionState>? GenericDurableCommit { get; set; }
     public Action<FeatureConstructionTrace>? FeatureEvidenceSink { get; set; }
     internal void FeatureTrace(FeatureConstructionTrace trace) => FeatureEvidenceSink?.Invoke(trace);
     private sealed record GenericSnapshot(Dictionary<string, PlanarSketchBinding> Sketches, Dictionary<string, GenericFeatureBinding> Features,
@@ -73,7 +75,11 @@ public sealed partial class SolidWorksExecutionContext
     private sealed class GenericStore(SolidWorksExecutionContext context) : IMutationStateStore<GenericConstructionState>
     {
         public GenericConstructionState Load() => context.genericState!;
-        public void Commit(GenericConstructionState state) => context.genericState = state;
+        public void Commit(GenericConstructionState state)
+        {
+            if (context.GenericDurableCommit is { } publish) publish(state);
+            context.genericState = state;
+        }
     }
     internal FeatureSolidExpectation GenericExpectation(ConstructionProgram program)
     {
@@ -425,10 +431,16 @@ public sealed partial class SolidWorksExecutionContext
             var live = c.ReadGenericState(state.Program, state.Revision);
             if (!GenericConstructionStatePolicy.MatchesNativeSnapshot(state, live)) throw new StateException("STATE_DRIFT_DETECTED", "Native state differs from authoritative generic state.");
         }
-        public GenericRollback CaptureRollback(GenericConstructionState state, GenericPrepared p) => new(NativeConstructionCheckpoint.Capture(c), state);
+        public GenericRollback CaptureRollback(GenericConstructionState state, GenericPrepared p)
+        {
+            var checkpoint = NativeConstructionCheckpoint.Capture(c);
+            c.GenericDurableCheckpoint?.Invoke();
+            return new(checkpoint, state);
+        }
         public ChangeSet Execute(GenericPrepared p)
         {
             c.MutationInProgress = true;
+            DocumentIdentityAdapter.EnsurePersistentIds(c);
             if (p.Command.Edit is { } edit) c.ApplyGenericEdit(edit);
             else foreach (var operation in p.Addition) c.ExecuteGenericOperation(operation);
             foreach (var o in p.Program.Operations)
@@ -442,7 +454,7 @@ public sealed partial class SolidWorksExecutionContext
             c.FeatureTrace(new("postconditions", "program", "full-native-material-proof", After: p.Expectation.VolumeMm3, Success: true));
         }
         public GenericConstructionState ValidateFinal(GenericConstructionState state, GenericPrepared p, ValidationScope scope) => c.ReadGenericState(p.Program, checked(state.Revision + 1));
-        public void StageState(GenericPrepared p, GenericConstructionState state) { c.MutationInProgress = false; }
+        public void StageState(GenericPrepared p, GenericConstructionState state) { c.genericState = state; c.MutationInProgress = false; }
         public void Rollback(GenericRollback saved)
         {
             foreach (var old in saved.Before.Parameters)

@@ -11,6 +11,8 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 3 && args[1] == "--t1-pure") return T1Tests.Pure(args[0], args[2]);
+            if (args.Length == 4 && args[1] == "--t1") return T1Tests.Run(args[0], args[2], args[3]);
             if (args.Length == 2 && args[1] == "--pure") return PureTests.Run(args[0]);
             if (args.Length is 4 or 5 && args[1] == "--native") return NativeTests.Run(args[0], args[2], args[3], args.Length == 5 ? args[4] : null);
             return 2;
