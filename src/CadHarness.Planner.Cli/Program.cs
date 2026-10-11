@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -21,6 +22,7 @@ internal static class Program
     {
         try
         {
+            if (Array.IndexOf(args, "--v03-request") >= 0) return await RunConstruction(args);
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
             var llm = false;
             for (var i = 0; i < args.Length; i++)
@@ -64,7 +66,39 @@ internal static class Program
             return result.Succeeded ? 0 : result.Status == PlanningStatus.Unsupported ? 2 : 1;
         }
         catch (PlannerException error) { Console.Error.WriteLine(error.Code + ": " + error.Message); return 1; }
+        catch (CadHarness.Ir.V03.ContractException error) { Console.Error.WriteLine(error.Code + ": " + error.Message); return 1; }
         catch (Exception error) when (error is ArgumentException or IOException or JsonException or StateException)
         { Console.Error.WriteLine("PLANNER_INPUT_INVALID: " + error.Message); return 1; }
+    }
+
+    private static async Task<int> RunConstruction(string[] args)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal); var llm = false;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--llm") { if (llm) throw new ArgumentException("Duplicate --llm."); llm = true; continue; }
+            if (args[i] is not ("--v03-request" or "--fixtures" or "--output") || i + 1 == args.Length || !values.TryAdd(args[i], args[++i]))
+                throw new ArgumentException("Usage: --v03-request <request.json> (--fixtures <map.json> | --llm) [--output <preview.json>]. No CAD is executed.");
+        }
+        if (!values.ContainsKey("--v03-request") || llm == values.ContainsKey("--fixtures")) throw new ArgumentException("Choose exactly one plan source.");
+        var request = CadHarness.Ir.V03.ContractJson.Read<ConstructionPlanRequest>(File.ReadAllText(values["--v03-request"]),
+            r => { _ = ConstructionRequirements.Normalize(r); });
+        using var client = llm ? OpenAiPlanSource.CreateClient() : null;
+        IStructuredPlanSource source;
+        if (llm) source = new OpenAiPlanSource(client!, OpenAiPlannerOptions.FromEnvironment());
+        else
+        {
+            using var map = JsonDocument.Parse(File.ReadAllText(values["--fixtures"]));
+            source = new FixturePlanSource(map.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetRawText(), StringComparer.Ordinal));
+        }
+        var result = await new ConstructionPlanner(SolidWorksConstructionPlanningRuntime.ForNewModel(), source).PlanAsync(request);
+        var json = JsonSerializer.Serialize(new { result, NativePartsCreated = 0, ExecutionAuthorized = false }, JsonOptions);
+        if (values.TryGetValue("--output", out var output))
+        {
+            using var file = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+            using var writer = new StreamWriter(file); writer.WriteLine(json);
+        }
+        Console.WriteLine(json);
+        return result.Status == ConstructionPlanningStatus.Planned ? 0 : result.Status is ConstructionPlanningStatus.Unsupported or ConstructionPlanningStatus.NeedsClarification ? 2 : 1;
     }
 }

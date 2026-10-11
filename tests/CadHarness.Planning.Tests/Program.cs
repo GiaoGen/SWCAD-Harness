@@ -118,17 +118,23 @@ internal static class Program
         void Add(string name, Action test) => tests.Add((name, () => { test(); return Task.CompletedTask; }));
         void Async(string name, Func<Task> test) => tests.Add((name, test));
         Add("catalog projects actual registered native handlers", () => Check(runtime.Capabilities.Registry.Contracts.Select(c => c.Kind).ToHashSet().SetEquals(new FeatureBackendRegistry().SupportedKinds), "Catalog and native registry diverged."));
-        Add("construction hides unavailable profiles, edits, circular patterns and relations", () =>
+        Add("construction projects qualified profiles and hides edits and unavailable relations", () =>
         {
             var text = runtime.Capabilities.ToPromptJson(); var schema = PlannerResponseSchema.Create(runtime.Capabilities);
-            foreach (var forbidden in new[] { "create_circular_pattern", "\"circle\"", "edit_parameter", "hole_diameter", "extrusion_depth", "through_all", "aligned_with", "depends_on" })
+            foreach (var forbidden in new[] { "edit_parameter", "hole_diameter", "extrusion_depth", "through_all", "aligned_with", "depends_on" })
                 Check(!text.Contains(forbidden, StringComparison.Ordinal) && !schema.Contains(forbidden, StringComparison.Ordinal), "Unsupported vocabulary leaked into planner input: " + forbidden);
-            Check(runtime.Capabilities.Profiles.SequenceEqual(new[] { ProfileKind.CenteredRectangle }) && runtime.Capabilities.Relations.Count == 5, "Executable profiles/relations differ.");
+            Check(runtime.Capabilities.Profiles.SequenceEqual(CreateExtrudeHandler.SupportedProfiles) && runtime.Capabilities.Relations.Count == 5 &&
+                text.Contains("create_circular_pattern", StringComparison.Ordinal) && schema.Contains("\"circle\"", StringComparison.Ordinal), "Qualified M9 profiles/patterns missing.");
         });
         Add("catalog narrows input types to executable construction outputs", () =>
         {
             foreach (var op in runtime.Capabilities.Registry.Contracts)
-                foreach (var input in op.Inputs) Check(!input.AcceptedTypes.Contains(SemanticType.ReferencePlane) && !input.AcceptedTypes.Contains(SemanticType.ReferenceAxis) && !input.AcceptedTypes.Contains(SemanticType.CircularEdge), "IR-wide accepted input types leaked into runtime catalog.");
+                foreach (var input in op.Inputs)
+                {
+                    var expected = input.Name == "host" ? SemanticType.PlanarFace : input.Name == "seed" ? SemanticType.FeatureRef :
+                        input.Name == "axis" ? SemanticType.CylindricalFace : input.Role == SemanticRole.PatternDirection ? SemanticType.ReferenceAxis : SemanticType.LinearEdge;
+                    Check(input.AcceptedTypes.SequenceEqual(new[] { expected }), "IR-wide accepted input types leaked into runtime catalog.");
+                }
         });
         Add("creation and edit schemas satisfy provider closed-object rules", () =>
         {
@@ -152,21 +158,21 @@ internal static class Program
         {
             var source = new MockSource(valid); var result = await new CadPlanner(runtime, source).PlanAsync(intent);
             Check(result.Succeeded && source.Calls == 1 && source.Prompt!.Instructions.Contains(runtime.Capabilities.ToPromptJson(), StringComparison.Ordinal) &&
-                !source.Prompt.Instructions.Contains("create_circular_pattern", StringComparison.Ordinal), "Prompt ignored runtime projection.");
+                !source.Prompt.Instructions.Contains("\"kind\":\"edit_parameter\"", StringComparison.Ordinal), "Prompt ignored runtime projection.");
         });
-        Async("IR-valid circle extrusion is rejected by runtime profile guard", async () =>
+        Async("qualified M9 circle extrusion passes runtime profile guard", async () =>
         {
             var disk = program with { Operations = new[] { program.Operations[0] with { Parameters = new Dictionary<string, OperationParameter>
                 { ["profile"] = new ProfileParameter(new CircleProfile(80)), ["depthMm"] = new LengthParameter(10) } } }, Relations = Array.Empty<DesignRelation>() };
-            Check(new ProgramValidator().Validate(disk).IsValid && (await Plan(Envelope(disk))).Status == PlanningStatus.Unsupported, "IR-valid unsupported profile was executable to the planner.");
+            Check(new ProgramValidator().Validate(disk).IsValid && (await Plan(Envelope(disk))).Succeeded, "Qualified circle profile missing from planner.");
         });
-        Async("IR-valid circular pattern is rejected despite valid IR contract", async () =>
+        Async("circular pattern still rejects a logical axis instead of its qualified cylindrical host", async () =>
         {
             var p = program.Operations.ToArray(); p[2] = p[2] with { Kind = OperationKind.CreateCircularPattern,
                 Inputs = new[] { p[2].Inputs[0], new OperationInput("axis", new[] { new SemanticReference("plate.axis_x", SemanticType.ReferenceAxis) }) },
                 Parameters = new Dictionary<string, OperationParameter> { ["count"] = new CountParameter(6), ["angleDeg"] = new AngleParameter(360) } };
             var circular = program with { Operations = p, Relations = Array.Empty<DesignRelation>() };
-            Check(new ProgramValidator().Validate(circular).IsValid && (await Plan(Envelope(circular))).Status == PlanningStatus.Unsupported, "Planner accepted unavailable circular pattern.");
+            Check(new ProgramValidator().Validate(circular).IsValid && !(await Plan(Envelope(circular))).Succeeded, "Planner accepted an unqualified circular-axis reference.");
         });
         foreach (var relation in new[] { RelationKind.ThroughAll, RelationKind.AlignedWith, RelationKind.DependsOn })
         {
@@ -271,7 +277,7 @@ internal static class Program
             using var body = JsonDocument.Parse(handler.Body!); var request = body.RootElement;
             Check(request.GetProperty("model").GetString() == "configured-frontier-model" && request.GetProperty("store").ValueKind == JsonValueKind.False &&
                 request.GetProperty("text").GetProperty("format").GetProperty("strict").ValueKind == JsonValueKind.True && !request.TryGetProperty("tools", out _) &&
-                !handler.Body!.Contains("create_circular_pattern", StringComparison.Ordinal) && handler.Authorization == "Bearer test-placeholder-key" && handler.Endpoint!.Host == "example.test", "Adapter ignored configuration or exposed unsupported tools.");
+                handler.Body!.Contains("create_circular_pattern", StringComparison.Ordinal) && handler.Authorization == "Bearer test-placeholder-key" && handler.Endpoint!.Host == "example.test", "Adapter ignored configuration or executable projection.");
         });
         Async("provider HTTP error does not retry or leak response/credentials", async () =>
         {

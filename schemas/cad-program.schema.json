@@ -370,8 +370,8 @@
                 "type": {
                   "type": "string",
                   "enum": [
-                    "linear_edge",
-                    "reference_axis"
+                    "reference_axis",
+                    "linear_edge"
                   ]
                 }
               }
@@ -467,8 +467,8 @@
                 "type": {
                   "type": "string",
                   "enum": [
-                    "linear_edge",
-                    "reference_axis"
+                    "reference_axis",
+                    "linear_edge"
                   ]
                 }
               }
@@ -498,8 +498,8 @@
                 "type": {
                   "type": "string",
                   "enum": [
-                    "linear_edge",
-                    "reference_axis"
+                    "reference_axis",
+                    "linear_edge"
                   ]
                 }
               }

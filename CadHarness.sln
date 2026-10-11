@@ -58,11 +58,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.PlanarSketch.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.FeatureConstruction.Tests", "tests\CadHarness.FeatureConstruction.Tests\CadHarness.FeatureConstruction.Tests.csproj", "{26D31D5F-26E0-4546-B342-281D72B2244E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadHarness.ConstructionPlanning.Tests", "tests\CadHarness.ConstructionPlanning.Tests\CadHarness.ConstructionPlanning.Tests.csproj", "{AC08944C-E35C-431F-8F30-FDC1668C5AC3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC08944C-E35C-431F-8F30-FDC1668C5AC3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC08944C-E35C-431F-8F30-FDC1668C5AC3}.Release|Any CPU.Build.0 = Release|Any CPU
 		{820E47F6-9167-4A34-920D-422CAD831912}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{820E47F6-9167-4A34-920D-422CAD831912}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5F743242-586D-4B66-9F90-8C8A67E49701}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -117,6 +121,7 @@ Global
 		{26D31D5F-26E0-4546-B342-281D72B2244E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{AC08944C-E35C-431F-8F30-FDC1668C5AC3} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{C104C31F-96AC-4737-989B-874D0C566C8B} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{22E26023-BD66-4793-B770-3A406BCC1412} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
 		{A0B3B7DC-D5A8-4578-9157-5A95772A64BD} = {45DB5A0D-6551-4BBB-8D33-577931F4C629}
