@@ -18,23 +18,40 @@ public abstract record MutationPreparation(ChangeSet Changes, FullValidationReas
 public interface IMutationBackend<TPrepared, TRollback> : IRequestMutationBackend<OperationNode, TPrepared, TRollback>
     where TPrepared : MutationPreparation { }
 
-public interface IRequestMutationBackend<TRequest, TPrepared, TRollback> where TPrepared : MutationPreparation
+public interface IRequestMutationBackend<TRequest, TPrepared, TRollback> : IRequestMutationBackend<CadState, TRequest, TPrepared, TRollback>
+    where TPrepared : MutationPreparation { }
+
+public interface IRequestMutationBackend<TState, TRequest, TPrepared, TRollback> where TPrepared : MutationPreparation
 {
-    TPrepared ResolveInputs(CadState state, TRequest request);
-    void Preflight(CadState state, TPrepared prepared);
-    TRollback CaptureRollback(CadState state, TPrepared prepared);
+    TPrepared ResolveInputs(TState state, TRequest request);
+    void Preflight(TState state, TPrepared prepared);
+    TRollback CaptureRollback(TState state, TPrepared prepared);
     ChangeSet Execute(TPrepared prepared);
     bool Rebuild();
     void ValidatePostconditions(TPrepared prepared);
     bool RecoveryAllowed { get; }
     bool Recover(TPrepared prepared);
-    CadState ValidateFinal(CadState state, TPrepared prepared, ValidationScope scope);
+    TState ValidateFinal(TState state, TPrepared prepared, ValidationScope scope);
     // Stage session metadata before the atomic commit; rollback must restore it
     // if the disk commit fails. Nothing fallible runs after a successful commit.
-    void StageState(TPrepared prepared, CadState validated);
+    void StageState(TPrepared prepared, TState validated);
     void Rollback(TRollback rollback);
-    void ValidateRestored(CadState state, TRollback rollback, ValidationScope scope);
+    void ValidateRestored(TState state, TRollback rollback, ValidationScope scope);
     void Invalidate();
+}
+
+public interface IMutationStateStore<TState>
+{
+    TState Load();
+    void Commit(TState state);
+}
+public interface IMutationStatePolicy<TState>
+{
+    void Validate(TState state);
+    long Revision(TState state);
+    bool SameIdentity(TState before, TState after);
+    DirtySet Expand(TState state, ChangeSet changes);
+    ValidationScope Scope(TState state, DirtySet dirty, FullValidationReason reasons);
 }
 
 public sealed record MutationResult(bool Succeeded, string? FailureCode, string Message, string Stage,
@@ -52,11 +69,33 @@ public sealed class MutationTransaction<TPrepared, TRollback> where TPrepared : 
 // The same coordinator owns operation edits and whole construction programs.
 public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> where TPrepared : MutationPreparation
 {
-    private readonly ICadStateStore store;
-    private readonly IRequestMutationBackend<TRequest, TPrepared, TRollback> backend;
-    private bool running;
+    private readonly RequestMutationTransaction<CadState, TRequest, TPrepared, TRollback> transaction;
+    private sealed class Store(ICadStateStore inner) : IMutationStateStore<CadState>
+    { public CadState Load() => inner.Load(); public void Commit(CadState state) => inner.Commit(state); }
+    private sealed class Policy : IMutationStatePolicy<CadState>
+    {
+        public void Validate(CadState state) => StateValidation.Validate(state);
+        public long Revision(CadState state) => state.Revision;
+        public bool SameIdentity(CadState before, CadState after) => before.Document.Matches(after.Document);
+        public DirtySet Expand(CadState state, ChangeSet changes) => DirtySet.Expand(state, changes);
+        public ValidationScope Scope(CadState state, DirtySet dirty, FullValidationReason reasons) => ValidationScope.Select(state, dirty, reasons);
+    }
     public RequestMutationTransaction(ICadStateStore store, IRequestMutationBackend<TRequest, TPrepared, TRollback> backend)
-    { this.store = store; this.backend = backend; }
+        => transaction = new(new Store(store), backend, new Policy());
+    public MutationResult Execute(TRequest request, FullValidationReason requested = FullValidationReason.None) => transaction.Execute(request, requested);
+}
+
+// Versioned state contracts share the same mutation sequence without encoding
+// new feature kinds as fictitious v0.2 operations.
+public sealed class RequestMutationTransaction<TState, TRequest, TPrepared, TRollback>
+    where TState : class where TPrepared : MutationPreparation
+{
+    private readonly IMutationStateStore<TState> store;
+    private readonly IRequestMutationBackend<TState, TRequest, TPrepared, TRollback> backend;
+    private readonly IMutationStatePolicy<TState> policy;
+    private bool running;
+    public RequestMutationTransaction(IMutationStateStore<TState> store, IRequestMutationBackend<TState, TRequest, TPrepared, TRollback> backend, IMutationStatePolicy<TState> policy)
+    { this.store = store; this.backend = backend; this.policy = policy; }
 
     public MutationResult Execute(TRequest request, FullValidationReason requested = FullValidationReason.None)
     {
@@ -66,18 +105,18 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
                 false, false, false, false, false, false, null, ChangeSet.Empty, null, null);
             running = true;
         }
-        CadState? state = null; TPrepared? prepared = null; TRollback rollback = default!;
+        TState? state = null; TPrepared? prepared = null; TRollback rollback = default!;
         var started = false; var rebuilt = false; var recovery = false;
         var changes = ChangeSet.Empty; DirtySet? dirty = null; ValidationScope? scope = null;
         var stage = "load current state";
         try
         {
             state = store.Load();
-            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) StateValidation.Validate(state);
+            using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) policy.Validate(state);
             stage = "resolve inputs";
             using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) prepared = backend.ResolveInputs(state, request);
-            changes = prepared.Changes; dirty = DirtySet.Expand(state, changes);
-            scope = ValidationScope.Select(state, dirty, requested | prepared.ValidationReasons);
+            changes = prepared.Changes; dirty = policy.Expand(state, changes);
+            scope = policy.Scope(state, dirty, requested | prepared.ValidationReasons);
             stage = "preflight";
             using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) backend.Preflight(state, prepared);
             stage = "capture rollback"; rollback = backend.CaptureRollback(state, prepared);
@@ -93,22 +132,22 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
                 recovery = true; stage = "bounded recovery";
                 if (!ExecutionTelemetry.Recover(() => backend.Recover(prepared)) || !backend.Rebuild()) throw new StateException("RECOVERY_FAILED", "One allowed recovery attempt failed.");
                 using (ExecutionTelemetry.Measure(ExecutionPhase.Validation)) backend.ValidatePostconditions(prepared);
-                scope = ValidationScope.Select(state, dirty, scope.Reasons | FullValidationReason.Recovery);
+                scope = policy.Scope(state, dirty, scope.Reasons | FullValidationReason.Recovery);
             }
             stage = "final validation";
-            CadState validated;
+            TState validated;
             using (ExecutionTelemetry.Measure(ExecutionPhase.Validation))
-            { validated = backend.ValidateFinal(state, prepared, scope); StateValidation.Validate(validated); }
-            if (!validated.Document.Matches(state.Document) || validated.Revision != checked(state.Revision + 1))
+            { validated = backend.ValidateFinal(state, prepared, scope); policy.Validate(validated); }
+            if (!policy.SameIdentity(state, validated) || policy.Revision(validated) != checked(policy.Revision(state) + 1))
                 throw new StateException("TRANSACTION_INTEGRITY_FAILED", "Mutation changed identity or did not advance exactly one revision.");
             // Creation introduces identities absent from the baseline. The final
             // report uses the validated state so its full scope includes them.
-            dirty = DirtySet.Expand(validated, changes);
-            scope = ValidationScope.Select(validated, dirty, scope.Reasons);
+            dirty = policy.Expand(validated, changes);
+            scope = policy.Scope(validated, dirty, scope.Reasons);
             stage = "stage state"; backend.StageState(prepared, validated);
             stage = "atomic state commit"; store.Commit(validated);
             return new(true, null, "Mutation validated and atomically committed.", stage, true, rebuilt, false, false, true,
-                recovery, validated.Revision, changes, dirty, scope);
+                recovery, policy.Revision(validated), changes, dirty, scope);
         }
         catch (Exception error)
         {
@@ -120,7 +159,7 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
                     ExecutionTelemetry.Rollback(() => backend.Rollback(rollback));
                     if (!backend.Rebuild()) throw new StateException("FEATURE_REBUILD_FAILED", "Rollback rebuild failed.");
                     using (ExecutionTelemetry.Measure(ExecutionPhase.Validation))
-                        backend.ValidateRestored(state!, rollback, ValidationScope.Select(state!, dirty!, FullValidationReason.Rollback));
+                        backend.ValidateRestored(state!, rollback, policy.Scope(state!, dirty!, FullValidationReason.Rollback));
                     restored = true;
                 }
                 catch (Exception rollbackError)
@@ -130,12 +169,13 @@ public sealed class RequestMutationTransaction<TRequest, TPrepared, TRollback> w
                 }
             }
             return new(false, failure.Code, failure.Message, stage, started, rebuilt, started, restored, false,
-                recovery, state?.Revision, changes, dirty, scope, rollbackCode, rollbackMessage);
+                recovery, state is null ? null : policy.Revision(state), changes, dirty, scope, rollbackCode, rollbackMessage);
         }
         finally { lock (this) running = false; }
     }
     private static bool Same(ChangeSet a, ChangeSet b) => a.ChangedFeatures.ToHashSet().SetEquals(b.ChangedFeatures) &&
         a.ChangedParameters.ToHashSet().SetEquals(b.ChangedParameters) && a.PossiblyInvalidatedEntities.ToHashSet().SetEquals(b.PossiblyInvalidatedEntities) &&
         a.CreatedFeatures.ToHashSet().SetEquals(b.CreatedFeatures) && a.CreatedEntities.ToHashSet().SetEquals(b.CreatedEntities);
-    private static (string Code, string Message) Failure(Exception error) => error is ICadFailure failure ? (failure.Code, error.Message) : ("MUTATION_FAILED", error.Message);
+    private static (string Code, string Message) Failure(Exception error) => error is ICadFailure failure ? (failure.Code, error.Message) :
+        error is CadHarness.Ir.V03.ContractException contract ? (contract.Code, error.Message) : ("MUTATION_FAILED", error.Message);
 }

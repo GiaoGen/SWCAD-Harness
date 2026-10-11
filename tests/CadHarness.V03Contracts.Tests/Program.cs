@@ -157,7 +157,8 @@ internal static class Program
         Add("qualified scalar descriptor passes capability gate only", () => NativeQualificationCandidates.RequireExecutable(Observation, "boss", ParameterKey.ExtrusionDepth));
         Add("read-only target rejects before executable gate", () => Bad(() => NativeQualificationCandidates.RequireExecutable(Observation, "unknown_feature", ParameterKey.ExtrusionDepth), V03FailureCodes.ObservedOnlyTarget));
         Add("only four M14A scalar pairs qualified", () => Assert(NativeQualificationCandidates.Rows.Count == 4 && NativeQualificationCandidates.Rows.All(r => r.Qualified)));
-        Add("M15 planar qualification does not widen old registry or M16 features", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 && V03ContractCapabilities.Construction.All(c => c.Executable == (c.Kind is ConstructionKind.CreateSketch or ConstructionKind.CreateDatumPlane))));
+        Add("M16 explicit six-family projection preserves the old registry", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 &&
+            V03ContractCapabilities.Construction.Count == 6 && V03ContractCapabilities.Construction.All(c => c.Executable)));
         Add("M15 planar operation gate keeps feature kinds closed", () =>
         {
             V03ContractCapabilities.RequirePlanarOperation(ConstructionKind.CreateSketch);

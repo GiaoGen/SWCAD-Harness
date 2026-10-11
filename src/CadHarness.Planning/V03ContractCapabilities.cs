@@ -13,10 +13,10 @@ public static class V03ContractCapabilities
     {
         new ConstructionContractDescriptor(ConstructionKind.CreateSketch, "create_sketch", "Bound closed planar profile with declared driving constraints", true),
         new ConstructionContractDescriptor(ConstructionKind.CreateDatumPlane, "create_datum_plane", "Bound right-handed offset reference plane", true),
-        new ConstructionContractDescriptor(ConstructionKind.CreateExtrude, "create_extrude", "Initial single-body extrusion of a bound generic sketch", false),
-        new ConstructionContractDescriptor(ConstructionKind.CreateRevolvedBoss, "create_revolved_boss", "Single-body revolution about an in-plane profile axis", false),
-        new ConstructionContractDescriptor(ConstructionKind.CreateAdditiveBoss, "create_additive_boss", "Positive-depth extrusion merged with a tracked host body", false),
-        new ConstructionContractDescriptor(ConstructionKind.CreateExtrudedCut, "create_extruded_cut", "Blind or through-all removal from a tracked host body", false)
+        new ConstructionContractDescriptor(ConstructionKind.CreateExtrude, "create_extrude", "Initial single-body prism with bounded laminar material proof", true),
+        new ConstructionContractDescriptor(ConstructionKind.CreateRevolvedBoss, "create_revolved_boss", "Single-body revolution about the exact profile-local X axis", true),
+        new ConstructionContractDescriptor(ConstructionKind.CreateAdditiveBoss, "create_additive_boss", "Parallel-plane extrusion merged with retained tracked material", true),
+        new ConstructionContractDescriptor(ConstructionKind.CreateExtrudedCut, "create_extruded_cut", "Blind or through-all removal with bounded single-body material proof", true)
     });
 
     public static void RequireMode(RequestMode expected, RequestMode actual, ModelOrigin origin)
@@ -33,11 +33,12 @@ public static class V03ContractCapabilities
             "Only M15 planar construction is qualified on an explicit native execution context.", V03FailureCodes.CapabilityUnavailable);
     }
 
-    // Operation qualification does not provide a whole-program feature engine.
+    // Contract-only admission cannot establish the current native session's
+    // ownership, host, configuration or material facts.
     public static void RequireExecutable(ConstructionProgram program, RequestMode mode)
     {
         RequireMode(mode, program.Mode, program.Origin); ContractValidation.Program(program);
-        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "Use the qualified planar operations on a verified native execution context; whole-program construction awaits feature execution qualification.");
+        throw new ContractException(V03FailureCodes.CapabilityUnavailable, "Use ConstructGeneric on a verified native execution context; a context-free contract does not authorize mutation.");
     }
     public static void RequireExecutable(EditSetRequest request, RequestMode mode)
     {

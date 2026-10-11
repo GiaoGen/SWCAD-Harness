@@ -29,10 +29,10 @@ public sealed partial class SolidWorksExecutionContext
 
     private sealed record ConstructionSessionSnapshot(Dictionary<string, NativeOutput> Outputs, Dictionary<string, OperationNode> Operations,
         Dictionary<string, NativePersistentReference> Profiles, IFeature? CreatedFeature, string? Root, CadProgram? Program,
-        long Revision, bool Usable, bool Mutation, DependencyGraph? Dependencies);
+        long Revision, bool Usable, bool Mutation, DependencyGraph? Dependencies, object Generic);
 
     internal object SnapshotConstructionSession() => new ConstructionSessionSnapshot(new(outputs, StringComparer.Ordinal), new(operations, StringComparer.Ordinal),
-        new(holeProfiles, StringComparer.Ordinal), CreatedFeature, ConstructionRoot, RelationProgram, RelationRevision, RelationContextUsable, MutationInProgress, RelationDependencies);
+        new(holeProfiles, StringComparer.Ordinal), CreatedFeature, ConstructionRoot, RelationProgram, RelationRevision, RelationContextUsable, MutationInProgress, RelationDependencies, SnapshotGenericSession());
     internal void RestoreConstructionSession(object payload)
     {
         var saved = (ConstructionSessionSnapshot)payload;
@@ -41,5 +41,6 @@ public sealed partial class SolidWorksExecutionContext
         holeProfiles.Clear(); foreach (var item in saved.Profiles) holeProfiles.Add(item.Key, item.Value);
         CreatedFeature = saved.CreatedFeature; ConstructionRoot = saved.Root; RelationProgram = saved.Program;
         RelationRevision = saved.Revision; RelationContextUsable = saved.Usable; MutationInProgress = saved.Mutation; RelationDependencies = saved.Dependencies;
+        RestoreGenericSession(saved.Generic);
     }
 }

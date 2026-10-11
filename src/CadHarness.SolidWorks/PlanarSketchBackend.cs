@@ -26,8 +26,11 @@ public sealed partial class SolidWorksExecutionContext
     public Action<PlanarSketchTrace>? SketchEvidenceSink { get; set; }
     internal void SketchTrace(string stage, string api, string? entity = null, double? value = null, int? status = null) => SketchEvidenceSink?.Invoke(new(stage, api, entity, value, status));
     public PlanarSketchBinding CreatePlanarSketch(ConstructionOperation operation)
+        => CreatePlanarSketchCore(operation, false);
+    internal PlanarSketchBinding CreatePlanarSketchInTransaction(ConstructionOperation operation) => CreatePlanarSketchCore(operation, true);
+    private PlanarSketchBinding CreatePlanarSketchCore(ConstructionOperation operation, bool withinTransaction)
     {
-        CheckSketchSession();
+        CheckSketchSession(withinTransaction);
         V03ContractCapabilities.RequirePlanarOperation(operation.Kind);
         ContractValidation.Require(operation.Kind == ConstructionKind.CreateSketch && ContractValidation.Id(operation.Id) && ContractValidation.Id(operation.SemanticId) &&
             !operation.SemanticId.StartsWith("world.", StringComparison.Ordinal) && operation.Placement is not null && operation.Sketch is not null &&
@@ -62,8 +65,11 @@ public sealed partial class SolidWorksExecutionContext
     }
 
     public NativePersistentReference CreateOffsetDatum(ConstructionOperation operation)
+        => CreateOffsetDatumCore(operation, false);
+    internal NativePersistentReference CreateOffsetDatumInTransaction(ConstructionOperation operation) => CreateOffsetDatumCore(operation, true);
+    private NativePersistentReference CreateOffsetDatumCore(ConstructionOperation operation, bool withinTransaction)
     {
-        CheckSketchSession();
+        CheckSketchSession(withinTransaction);
         V03ContractCapabilities.RequirePlanarOperation(operation.Kind);
         ContractValidation.Require(operation.Kind == ConstructionKind.CreateDatumPlane && ContractValidation.Id(operation.Id) && ContractValidation.Id(operation.SemanticId) &&
             !operation.SemanticId.StartsWith("world.", StringComparison.Ordinal) && operation.Placement is not null &&
@@ -96,8 +102,12 @@ public sealed partial class SolidWorksExecutionContext
     }
 
     public PlanarSketchBinding EditSketchRadius(PlanarSketchBinding binding, string entityId, PositiveLength expectedRadius, PositiveLength radius)
+        => EditSketchRadiusCore(binding, entityId, expectedRadius, radius, false);
+    internal PlanarSketchBinding EditSketchRadiusInTransaction(PlanarSketchBinding binding, string entityId, PositiveLength expectedRadius, PositiveLength radius)
+        => EditSketchRadiusCore(binding, entityId, expectedRadius, radius, true);
+    private PlanarSketchBinding EditSketchRadiusCore(PlanarSketchBinding binding, string entityId, PositiveLength expectedRadius, PositiveLength radius, bool withinTransaction)
     {
-        CheckSketchSession(); CheckSketchBinding(binding); _ = ReadPlanarSketch(binding);
+        CheckSketchSession(withinTransaction); CheckSketchBinding(binding); _ = ReadPlanarSketch(binding);
         ContractValidation.Require(ContractValidation.Length(radius.Millimeters) && ContractValidation.Length(expectedRadius.Millimeters), "Radius bounds invalid.");
         var entity = binding.Specification.Entities.SingleOrDefault(e => e.Id == entityId);
         ContractValidation.Require(entity?.Kind == SketchEntityKind.Circle && Math.Abs(entity.Radius!.Millimeters - expectedRadius.Millimeters) <= PlanarSketchPreflight.ToleranceMm, "Only an exact declared independent circle radius is editable.");
@@ -132,10 +142,10 @@ public sealed partial class SolidWorksExecutionContext
             throw;
         }
     }
-    private void CheckSketchSession()
+    private void CheckSketchSession(bool withinTransaction = false)
     {
         CheckThread();
-        if (!RelationContextUsable || MutationInProgress || Document.GetActiveSketch2() is not null || Document.GetType() != (int)swDocumentTypes_e.swDocPART)
+        if (!RelationContextUsable || (MutationInProgress && !withinTransaction) || Document.GetActiveSketch2() is not null || Document.GetType() != (int)swDocumentTypes_e.swDocPART)
             throw new StateException("TRANSACTION_BUSY", "Planar construction needs a usable Part outside another transaction/sketch edit.");
     }
     private void CheckSketchBinding(PlanarSketchBinding binding)

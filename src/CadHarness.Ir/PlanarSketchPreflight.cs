@@ -27,12 +27,26 @@ public sealed record SketchPrimitive(string EntityId, int Ordinal, SketchPoint2 
 public sealed record PreparedSketchLoop(string Id, bool Inner, IReadOnlyList<SketchPrimitive> Primitives, double SignedAreaMm2);
 public sealed record PreparedPlanarSketch(ClosedSketch Specification, IReadOnlyList<PreparedSketchLoop> Loops,
     IReadOnlyList<SketchPrimitive> Primitives, string CoordinateDriverPolicy);
+public enum SketchRegionRelation { Equal, Inside, Contains, Disjoint, Intersecting }
 
 // Finite, already-dimensioned geometry, not an arbitrary symbolic solver. All
 // supplied local point coordinates are authoritative driving positions.
 public static class PlanarSketchPreflight
 {
     public const double ToleranceMm = 1e-7;
+    public static SketchRegionRelation Relation(PreparedPlanarSketch a, PreparedPlanarSketch b)
+    {
+        if (a.Loops.Count == b.Loops.Count && a.Primitives.Count == b.Primitives.Count && a.Primitives.Zip(b.Primitives).All(pair =>
+            Near(pair.First.Start, pair.Second.Start) && Near(pair.First.End, pair.Second.End) && pair.First.Center == pair.Second.Center &&
+            Math.Abs(pair.First.RadiusMm - pair.Second.RadiusMm) <= ToleranceMm && Math.Abs(pair.First.SweepRadians - pair.Second.SweepRadians) <= 1e-10)) return SketchRegionRelation.Equal;
+        if (a.Primitives.Any(x => b.Primitives.Any(y => { var hit = Intersections(x, y); return hit.Overlap || hit.Points.Count != 0; }))) return SketchRegionRelation.Intersecting;
+        bool In(PreparedPlanarSketch region, SketchPoint2 p) => region.Loops.Any(l => !l.Inner && Contains(l, p)) && !region.Loops.Any(l => l.Inner && Contains(l, p));
+        bool Fits(PreparedPlanarSketch small, PreparedPlanarSketch large) => small.Loops.Where(l => !l.Inner).All(l => In(large, l.Primitives[0].At(0.37))) &&
+            !large.Loops.Where(l => l.Inner).Any(l => In(small, l.Primitives[0].At(0.37)));
+        if (Fits(a, b)) return SketchRegionRelation.Inside;
+        if (Fits(b, a)) return SketchRegionRelation.Contains;
+        return SketchRegionRelation.Disjoint;
+    }
     private const double Tau = 2 * Math.PI;
     private static void Check(bool value, string message, string code = V03FailureCodes.InvalidSketch) => ContractValidation.Require(value, message, code);
     private static double Cross(SketchPoint2 a, SketchPoint2 b) => a.X * b.Y - a.Y * b.X;
