@@ -54,6 +54,7 @@ public static class ContractJson
         Nullable.GetUnderlyingType(property.PropertyType) is not null ||
         new NullabilityInfoContext().Create(property).ReadState == NullabilityState.Nullable;
     private static string Name(PropertyInfo property) => JsonNamingPolicy.CamelCase.ConvertName(property.Name);
+    private static bool Optional(PropertyInfo property) => property.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition == JsonIgnoreCondition.WhenWritingNull;
     private static string EnumName(object value) => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString()!);
     private static Type? Item(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) ? type.GetGenericArguments()[0] : null;
     private static JsonObject Shape(Type type, bool nullable)
@@ -100,7 +101,7 @@ public static class ContractJson
             if ((type == typeof(SignedCoordinate) || type == typeof(SignedOffset)) && p.Name == "Millimeters")
             { property["minimum"] = -ContractLimits.SpatialBoundMm; property["maximum"] = ContractLimits.SpatialBoundMm; }
             if (p.Name == "Confidence") { property["minimum"] = 0; property["maximum"] = 1; }
-            properties[Name(p)] = property; required.Add(Name(p));
+            properties[Name(p)] = property; if (!Optional(p)) required.Add(Name(p));
         }
         return new() { ["type"] = "object", ["additionalProperties"] = false, ["properties"] = properties, ["required"] = required };
     }
@@ -127,7 +128,7 @@ public static class ContractJson
             if (!properties.TryGetValue(p.Name, out var definition)) Invalid(path + " has unknown field " + p.Name);
             Check(p.Value, definition!.PropertyType, AllowsNull(definition), path + "." + p.Name, depth + 1);
         }
-        if (seen.Count != properties.Count) Invalid(path + " is missing required fields.");
+        if (properties.Any(p => !Optional(p.Value) && !seen.Contains(p.Key))) Invalid(path + " is missing required fields.");
     }
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     private static void Invalid(string message) => throw new ContractException(V03FailureCodes.ContractInvalid, message);

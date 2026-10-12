@@ -7,7 +7,10 @@ namespace CadHarness.Ir.V03;
 public sealed record PreparedFeatureProfile(ConstructionOperation Operation, SpatialPlacement Placement, PreparedPlanarSketch Sketch);
 public sealed record PrismLayer(string Id, PreparedPlanarSketch Footprint, double StartMm, double EndMm, bool Remove);
 public sealed record FeatureSolidExpectation(double VolumeMm3, LocalFrame Frame, Vector3 MinimumLocalMm, Vector3 MaximumLocalMm,
-    IReadOnlyList<PrismLayer> Layers, double? RevolveRadiusMm, double? RevolveAxialSpanMm);
+    IReadOnlyList<PrismLayer> Layers, double? RevolveRadiusMm, double? RevolveAxialSpanMm)
+{
+    public OrthogonalMaterial? Orthogonal { get; init; }
+}
 
 // Analytic, bounded material proof. Crossing footprints and mixed sweep axes are
 // deliberately unqualified; native success alone cannot authorize them.
@@ -24,6 +27,8 @@ public static class FeatureConstructionPreflight
             return Revolve(first);
         }
         ContractValidation.Require(first.Operation.Kind == ConstructionKind.CreateExtrude, "Initial feature must create a tracked single body.");
+        if (features.Any(f => Math.Abs(Math.Abs(SketchFrames.Dot(f.Placement.Frame.ZAxis, first.Placement.Frame.ZAxis)) - 1) > 1e-8))
+            return OrthogonalMaterialProof.Evaluate(features);
         var frame = first.Placement.Frame with { OriginMm = SketchFrames.World(first.Placement, new(0, 0)) };
         var layers = new List<PrismLayer>();
         foreach (var f in features)

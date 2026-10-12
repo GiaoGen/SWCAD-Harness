@@ -47,10 +47,12 @@ public static class ConstructionPreflight
                 datums.Add(o.SemanticId + ".plane", p);
             }
         }
-        return FeatureConstructionPreflight.Evaluate(program.Operations.Where(o => o.Profile is not null).Select(o =>
+        var profiles = program.Operations.Where(o => o.Profile is not null).Select(o =>
         {
             var s = sketches[o.Profile!.SemanticId[..^8]];
             return new PreparedFeatureProfile(o, s.Placement!, PlanarSketchPreflight.Prepare(s.Sketch!));
-        }).ToArray());
+        }).ToArray();
+        var material = program.Operations.Any(o => o.EdgeTreatment is not null) ? OrthogonalMaterialProof.Evaluate(profiles) : FeatureConstructionPreflight.Evaluate(profiles);
+        return ConvexFilletProof.Apply(program, material);
     }
 }

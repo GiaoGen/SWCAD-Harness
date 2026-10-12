@@ -160,16 +160,18 @@ public static class ContractValidation
         foreach (var o in program.Operations)
         {
             Require(Id(o.Id) && Id(o.SemanticId) && !o.SemanticId.StartsWith("world.", StringComparison.Ordinal) && Enum.IsDefined(o.Kind), "Invalid operation identity/kind.");
-            foreach (var r in new[] { o.Profile, o.Axis, o.HostBody, o.Placement?.Plane, o.Placement?.InPlaneDirection }.OfType<SemanticReference>())
+            foreach (var r in new[] { o.Profile, o.Axis, o.HostBody, o.Placement?.Plane, o.Placement?.InPlaneDirection, o.EdgeTreatment?.HostFeature }.OfType<SemanticReference>())
                 Require(available.TryGetValue(r.SemanticId, out var type) && type == r.Type, "Reference must bind an earlier typed output or principal datum.");
             if (o.Placement is not null) Placement(o.Placement);
             if (o.Depth is not null) Require(Length(o.Depth.Millimeters), "Feature depth must be positive.");
             Require(o.Direction is null || Enum.IsDefined(o.Direction.Value), "Invalid direction.");
+            Require((o.Kind == ConstructionKind.ApplyFillet) == (o.EdgeTreatment is not null), "Edge treatment belongs only to a typed fillet operation.");
             if (o.Kind == ConstructionKind.CreateSketch)
             {
                 Require(o.Placement is not null && o.Sketch is not null && o.Profile is null && o.Axis is null && o.HostBody is null &&
                     o.EndCondition is null && o.Direction is null && o.Depth is null && o.AngleDegrees is null && o.BodyRule is null, "Invalid sketch operation fields.");
                 Sketch(o.Sketch!); Output(o.SemanticId + ".profile", SemanticType.SketchProfile);
+                if (o.Sketch!.RadialProfile is not null) RadialProfilePolicy.Validate(o.Sketch);
                 Output(o.SemanticId + ".axis_x", SemanticType.ReferenceAxis);
             }
             else if (o.Kind == ConstructionKind.CreateDatumPlane)
@@ -177,6 +179,15 @@ public static class ContractValidation
                 Require(o.Placement is not null && o.Sketch is null && o.Profile is null && o.Axis is null && o.HostBody is null &&
                     o.EndCondition is null && o.Direction is null && o.Depth is null && o.AngleDegrees is null && o.BodyRule is null, "Invalid datum operation fields.");
                 Output(o.SemanticId + ".plane", SemanticType.ReferencePlane);
+            }
+            else if (o.Kind == ConstructionKind.ApplyFillet)
+            {
+                var edge = o.EdgeTreatment!;
+                Require(bodyCreated && o.Placement is null && o.Sketch is null && o.Profile is null && o.Axis is null && o.Depth is null && o.AngleDegrees is null &&
+                    o.Direction is null && o.EndCondition is null && o.BodyRule is null && o.HostBody?.Type == SemanticType.BodyRef &&
+                    edge.Version == 1 && edge.HostFeature.Type == SemanticType.FeatureRef && Enum.IsDefined(edge.EdgeAxis) && Enum.IsDefined(edge.FirstSide) && Enum.IsDefined(edge.SecondSide) && Length(edge.Radius.Millimeters), "Invalid finite convex fillet contract.");
+                Require(program.Operations.Any(p => p.SemanticId == edge.HostFeature.SemanticId && p.Kind is ConstructionKind.CreateExtrude or ConstructionKind.CreateAdditiveBoss), "Fillet selector host must be a managed positive extrusion.");
+                Output(o.SemanticId + ".body", SemanticType.BodyRef);
             }
             else
             {
@@ -202,6 +213,10 @@ public static class ContractValidation
             }
             Output(o.SemanticId, SemanticType.FeatureRef);
         }
+        foreach (var sketch in program.Operations.Where(o => o.Sketch?.RadialProfile is not null))
+            Require(program.Operations.Count(o => o.Profile?.SemanticId == sketch.SemanticId + ".profile") == 1 &&
+                program.Operations.Any(o => o.Profile?.SemanticId == sketch.SemanticId + ".profile" && o.Kind == ConstructionKind.CreateRevolvedBoss && o.EndCondition == EndCondition.FullRevolution),
+                "Radial polyline drivers are limited to one full single-body revolve owner.");
     }
     public static void Reference(SemanticReference reference, params SemanticType[] types) =>
         Require(Id(reference.SemanticId) && types.Contains(reference.Type), "Invalid semantic reference type/ID.");

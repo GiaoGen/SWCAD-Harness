@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CadHarness.Ir;
 using CadHarness.Ir.V03;
 
@@ -9,9 +10,21 @@ namespace CadHarness.State;
 
 public sealed record GenericDimensionImage(string EntityId, ConstraintKind Kind, NativePersistentReference CircleReference);
 public sealed record GenericSketchImage(string SemanticId, IReadOnlyList<NativePersistentReference> Primitives,
-    IReadOnlyList<GenericDimensionImage> Dimensions, IReadOnlyList<double> ModelToSketchTransform, long Revision);
+    IReadOnlyList<GenericDimensionImage> Dimensions, IReadOnlyList<double> ModelToSketchTransform, long Revision)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public NativeRadialProfile? Radial { get; init; }
+}
+public sealed record NativeRadialDimension(string Id, bool Radial, int PrimitiveOrdinal,
+    int NativeDimensionType, NativePersistentReference Point);
+public sealed record NativeRadialProfile(NativePersistentReference Origin, IReadOnlyList<NativeRadialDimension> Dimensions);
 public sealed record GenericFeatureImage(string SemanticId, string ProfileId, bool NativeReverse,
-    NativePersistentReference? AxisLine, NativePersistentReference? AxisSketch, NativePersistentReference? AxisDatum);
+    NativePersistentReference? AxisLine, NativePersistentReference? AxisSketch, NativePersistentReference? AxisDatum)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GenericEdgeImage? Edge { get; init; }
+}
+public sealed record GenericEdgeImage(NativePersistentReference Edge, NativePersistentReference HostFeature, IReadOnlyList<NativePersistentReference> FaceOwners);
 public sealed record GenericProvenance(string Version, string Kind, string Payload);
 public sealed record GenericRevisionPackage(string SchemaVersion, string PackageType, int FormatVersion,
     GenericConstructionState State, IReadOnlyList<GenericSketchImage> SketchBindings,
@@ -21,17 +34,20 @@ public static class GenericRevisionValidation
 {
     public static void Validate(GenericRevisionPackage package)
     {
-        ContractValidation.Require(package.SchemaVersion == "0.3" && package.PackageType == "generic_construction" && package.FormatVersion == 1,
+        ContractValidation.Require(package.SchemaVersion == "0.3" && package.PackageType == "generic_construction" && package.FormatVersion is 1 or 2 or 3,
             "Unsupported explicit Generic package type/version.");
         new GenericConstructionStatePolicy().Validate(package.State);
         var s = package.State;
+        var radial = s.Sketches.Any(sketch => sketch.Specification.RadialProfile is not null);
+        var edges = s.Program.Operations.Any(o => o.EdgeTreatment is not null);
+        ContractValidation.Require(package.FormatVersion == (edges ? 3 : radial ? 2 : 1), "Edge bindings require explicit format 3; radial 2; old packages stay 1.");
         ContractValidation.Require(s.Program.Origin == ModelOrigin.Harness && s.Features.Count == s.Program.Operations.Count &&
             s.Program.Operations.All(o => s.Features.Count(f => f.SemanticId == o.SemanticId && f.Kind == o.Kind) == 1), "Program/feature association differs.");
         ContractValidation.Unique(package.SketchBindings.Select(b => b.SemanticId), "persisted sketch");
         ContractValidation.Unique(package.FeatureBindings.Select(b => b.SemanticId), "persisted feature");
         ContractValidation.Unique(s.Features.Select(f => f.Reference.Base64), "feature reference");
         var sketches = s.Program.Operations.Where(o => o.Kind == ConstructionKind.CreateSketch).ToArray();
-        var features = s.Program.Operations.Where(o => o.Profile is not null).ToArray();
+        var features = s.Program.Operations.Where(o => o.Profile is not null || o.EdgeTreatment is not null).ToArray();
         ContractValidation.Require(s.Sketches.Count == sketches.Length && package.SketchBindings.Count == sketches.Length && package.FeatureBindings.Count == features.Length,
             "Persisted binding inventory differs from program.");
         foreach (var o in sketches)
@@ -46,6 +62,8 @@ public static class GenericRevisionValidation
                 binding.Primitives.Count == expected.Primitives.Count, "Primitive identity or transform invalid.");
             ContractValidation.Unique(binding.Primitives.Select(r => r.Base64), "primitive reference");
             var drivers = native.Specification.Constraints.Where(c => c.Kind is ConstraintKind.Radius or ConstraintKind.Diameter).ToArray();
+            ContractValidation.Require((native.Specification.RadialProfile is null) == (binding.Radial is null), "Radial program/binding association differs.");
+            if (binding.Radial is not null) ValidateRadialImage(native.Specification, binding.Radial);
             ContractValidation.Require(binding.Dimensions.Count == drivers.Length, "Dimension inventory differs.");
             foreach (var d in drivers)
             {
@@ -57,7 +75,15 @@ public static class GenericRevisionValidation
         foreach (var o in features)
         {
             var b = package.FeatureBindings.Single(f => f.SemanticId == o.SemanticId);
-            ContractValidation.Require(o.Profile!.SemanticId == b.ProfileId + ".profile" && s.Sketches.Any(p => p.SemanticId == b.ProfileId), "Feature profile owner differs.");
+            ContractValidation.Require((o.EdgeTreatment is null) == (b.Edge is null), "Edge binding/operation association differs.");
+            if (b.Edge is { } edge)
+            {
+                StateValidation.DecodeReference(edge.Edge); StateValidation.DecodeReference(edge.HostFeature);
+                ContractValidation.Require(edge.FaceOwners.Count == 2 && edge.FaceOwners.Contains(edge.HostFeature) && edge.FaceOwners.All(r => s.Features.Any(f => f.Reference == r && f.Kind is ConstructionKind.CreateExtrude or ConstructionKind.CreateAdditiveBoss)), "Fillet adjacent face ownership is not managed positive material.");
+                ContractValidation.Require(b.ProfileId == "" && s.Features.Single(f => f.SemanticId == o.EdgeTreatment!.HostFeature.SemanticId).Reference == edge.HostFeature,
+                    "Persisted edge host ownership differs.");
+            }
+            else ContractValidation.Require(o.Profile!.SemanticId == b.ProfileId + ".profile" && s.Sketches.Any(p => p.SemanticId == b.ProfileId), "Feature profile owner differs.");
             var axes = new[] { b.AxisLine, b.AxisSketch, b.AxisDatum }.OfType<NativePersistentReference>().ToArray();
             ContractValidation.Require(axes.Length == (o.Kind == ConstructionKind.CreateRevolvedBoss ? 3 : 0) &&
                 axes.SequenceEqual(s.Features.Single(f => f.SemanticId == b.SemanticId).AuxiliaryReferences), "Feature axis identity differs.");
@@ -68,6 +94,24 @@ public static class GenericRevisionValidation
                 "Unsupported provenance version/size.");
             using var json = JsonDocument.Parse(provenance.Payload, new JsonDocumentOptions { MaxDepth = 32 });
             ContractValidation.Require(json.RootElement.ValueKind == JsonValueKind.Object, "Provenance must be structured data, not code.");
+        }
+    }
+    public static void ValidateRadialImage(ClosedSketch specification, NativeRadialProfile image)
+    {
+        RadialProfilePolicy.Validate(specification); StateValidation.DecodeReference(image.Origin);
+        var prepared = PlanarSketchPreflight.Prepare(specification);
+        var bound = specification.RadialProfile!.Points.ToDictionary(p => p.PointId, p => p.DriverId);
+        var ordered = specification.Entities.Single().Points;
+        var expected = prepared.Primitives.Where(p => Math.Abs(p.Start.Y - p.End.Y) < 1e-7).GroupBy(p => bound[ordered[p.Ordinal]])
+            .Where(g => g.Key is not null).Select(g => (Id: g.Key!, Radial: true, Ordinal: g.First().Ordinal)).Concat(
+                prepared.Primitives.Where(p => Math.Abs(p.Start.X - p.End.X) < 1e-7).GroupBy(p => p.Start.X).Where(g => g.Key != 0)
+                .Select(g => (Id: "station_" + g.First().Ordinal, Radial: false, Ordinal: g.First().Ordinal))).ToArray();
+        ContractValidation.Require(image.Dimensions.Count == expected.Length && expected.All(e => image.Dimensions.Count(d => d.Id == e.Id && d.Radial == e.Radial && d.PrimitiveOrdinal == e.Ordinal) == 1), "Radial dimension identity/rail association differs.");
+        foreach (var d in image.Dimensions)
+        {
+            StateValidation.DecodeReference(d.Point);
+            // Official swDimensionType_e: horizontal/vertical linear dimensions.
+            ContractValidation.Require(d.NativeDimensionType is 11 or 12, "Unsupported radial dimension type.");
         }
     }
     // Identity/revision carrier for the shared journal protocol only. It is

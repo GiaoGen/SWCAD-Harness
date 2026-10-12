@@ -16,10 +16,13 @@ using V = CadHarness.Ir.V03.Vector3;
 namespace CadHarness.SolidWorks;
 
 public sealed record FeatureConstructionTrace(string Stage, string SemanticId, string Api, double? Before = null, double? After = null, bool? Success = null);
-public sealed record GenericScalarCommand(string Target, ParameterKey Parameter, double ExpectedOldValue, double Value, long ExpectedRevision);
+public sealed record GenericScalarCommand(string Target, ParameterKey Parameter, double ExpectedOldValue, double Value, long ExpectedRevision, string? ParameterSemanticId = null);
 internal sealed record GenericCommand(ConstructionProgram? Program, GenericScalarCommand? Edit, bool Candidate = false);
 internal sealed record GenericFeatureBinding(ConstructionOperation Operation, NativePersistentReference Feature, string ProfileId,
-    bool NativeReverse, NativePersistentReference? AxisLine, NativePersistentReference? AxisSketch, NativePersistentReference? AxisDatum);
+    bool NativeReverse, NativePersistentReference? AxisLine, NativePersistentReference? AxisSketch, NativePersistentReference? AxisDatum)
+{
+    public GenericEdgeImage? Edge { get; init; }
+}
 internal sealed record GenericPrepared(GenericCommand Command, ConstructionProgram Program, IReadOnlyList<ConstructionOperation> Addition,
     FeatureSolidExpectation Expectation, ChangeSet Changes) : MutationPreparation(Changes, FullValidationReason.NewModelFinalization);
 internal sealed record GenericRollback(NativeConstructionCheckpoint Checkpoint, GenericConstructionState Before);
@@ -96,11 +99,13 @@ public sealed partial class SolidWorksExecutionContext
             }
             return p;
         }
-        return FeatureConstructionPreflight.Evaluate(program.Operations.Where(o => o.Profile is not null).Select(o =>
+        var profiles = program.Operations.Where(o => o.Profile is not null).Select(o =>
         {
             var s = sketches[o.Profile!.SemanticId[..^8]];
             return new PreparedFeatureProfile(o, Placement(s), PlanarSketchPreflight.Prepare(s.Sketch!));
-        }).ToArray());
+        }).ToArray();
+        var material = program.Operations.Any(o => o.EdgeTreatment is not null) ? OrthogonalMaterialProof.Evaluate(profiles) : FeatureConstructionPreflight.Evaluate(profiles);
+        return ConvexFilletProof.Apply(program, material);
     }
     internal GenericConstructionState ReadGenericState(ConstructionProgram program, long revision)
     {
@@ -117,11 +122,19 @@ public sealed partial class SolidWorksExecutionContext
         var parameters = new List<GenericNativeParameter>();
         foreach (var f in genericFeatures.Values)
         {
+            if (f.Operation.Kind == ConstructionKind.ApplyFillet) continue;
             var key = f.Operation.Kind == ConstructionKind.CreateAdditiveBoss ? ParameterKey.AdditiveBossDepth : f.Operation.Kind == ConstructionKind.CreateExtrudedCut ? ParameterKey.CutDepth : ParameterKey.ExtrusionDepth;
             if (f.Operation.Depth is not null) parameters.Add(new(f.Operation.SemanticId + ".depth", f.Operation.SemanticId, key, NativeDepth(f), GenericFeatureCapabilities.IsQualified(f.Operation.Kind, key)));
             if (f.Operation.Kind == ConstructionKind.CreateRevolvedBoss && genericSketches[f.ProfileId].Specification.Entities is { Count: 1 } entities && entities[0].Kind == SketchEntityKind.Circle)
                 parameters.Add(new(f.Operation.SemanticId + ".radius", f.Operation.SemanticId, ParameterKey.RevolveRadius,
                     ReadPlanarSketch(genericSketches[f.ProfileId]).DimensionsMm[entities[0].Id] / (genericSketches[f.ProfileId].Dimensions[0].Kind == ConstraintKind.Diameter ? 2 : 1), GenericFeatureCapabilities.IsQualified(f.Operation.Kind, ParameterKey.RevolveRadius)));
+            if (f.Operation.Kind == ConstructionKind.CreateRevolvedBoss && genericSketches[f.ProfileId].Specification.RadialProfile is { } radial)
+            {
+                var values = ReadPlanarSketch(genericSketches[f.ProfileId]).DimensionsMm;
+                foreach (var driver in radial.Drivers)
+                    parameters.Add(new(f.Operation.SemanticId + ".radius." + driver.Id, f.Operation.SemanticId, ParameterKey.RevolveRadius,
+                        values[driver.Id], !radial.Relations.Any(r => r.TargetDriver == driver.Id)));
+            }
         }
         var owners = nodes.ToDictionary(n => n.Reference, n => n.SemanticId);
         var dependencies = nodes.SelectMany(n => NativeTopology.Objects<IFeature>(PersistentReferenceAdapter.Resolve<IFeature>(this, n.Reference).NativeObject!.GetParents())
@@ -149,7 +162,8 @@ public sealed partial class SolidWorksExecutionContext
             var f = PersistentReferenceAdapter.Resolve<IFeature>(this, reference).NativeObject;
             if (f is null || f.GetErrorCode2(out var warning) != 0 || warning || f.IsSuppressed()) throw new StateException("STALE_REFERENCE", "Datum unhealthy.");
         }
-        foreach (var f in genericFeatures.Values) VerifyDefinition(f);
+        foreach (var f in genericFeatures.Values)
+            if (f.Operation.Kind == ConstructionKind.ApplyFillet) VerifyGenericFillet(f, program); else VerifyDefinition(f);
         if (genericFeatures.Count == 0) return;
         var e = GenericExpectation(program); var bodies = NativeGeometry.SolidBodies(Document);
         if (bodies.Count != 1) throw new StateException(V03FailureCodes.UnsupportedBodyTopology, "Feature must retain exactly one solid body.");
@@ -230,11 +244,12 @@ public sealed partial class SolidWorksExecutionContext
         }
         _ = ReadPlanarSketch(genericSketches[binding.ProfileId]);
     }
-    internal void ExecuteGenericOperation(ConstructionOperation o)
+    internal void ExecuteGenericOperation(ConstructionOperation o, ConstructionProgram program)
     {
         FeatureTrace(new("before", o.SemanticId, "native-operation"));
         if (o.Kind == ConstructionKind.CreateSketch) genericSketches.Add(o.SemanticId, CreatePlanarSketchInTransaction(o));
         else if (o.Kind == ConstructionKind.CreateDatumPlane) genericDatums.Add(o.SemanticId, CreateOffsetDatumInTransaction(o));
+        else if (o.Kind == ConstructionKind.ApplyFillet) CreateGenericFillet(o, program);
         else
         {
             var sketch = genericSketches[o.Profile!.SemanticId[..^8]];
@@ -357,14 +372,16 @@ public sealed partial class SolidWorksExecutionContext
             throw new StateException("UNTRACKED_NATIVE_HISTORY", "Untracked native feature: " + type);
         }
     }
-    internal void ApplyGenericEdit(GenericScalarCommand edit)
+    internal void ApplyGenericEdit(GenericScalarCommand edit, ConstructionProgram preparedProgram)
     {
         var f = genericFeatures[edit.Target];
         FeatureTrace(new("before-setter", edit.Target, "qualified-scalar", edit.ExpectedOldValue, edit.Value));
         if (edit.Parameter == ParameterKey.RevolveRadius)
         {
-            var s = genericSketches[f.ProfileId]; var circle = s.Specification.Entities.Single();
-            genericSketches[f.ProfileId] = EditSketchRadiusInTransaction(s, circle.Id, new(edit.ExpectedOldValue), new(edit.Value));
+            var s = genericSketches[f.ProfileId];
+            if (s.Specification.RadialProfile is not null)
+                genericSketches[f.ProfileId] = RadialSketchNative.Edit(this, s, preparedProgram.Operations.Single(o => o.SemanticId == f.ProfileId).Sketch!);
+            else genericSketches[f.ProfileId] = EditSketchRadiusInTransaction(s, s.Specification.Entities.Single().Id, new(edit.ExpectedOldValue), new(edit.Value));
         }
         else SetGenericDepth(f, edit.Value);
         FeatureTrace(new("setter-return", edit.Target, "qualified-scalar", edit.ExpectedOldValue, edit.Value, true));
@@ -397,25 +414,40 @@ public sealed partial class SolidWorksExecutionContext
                 addition = requested.Operations.Skip(state.Program.Operations.Count).ToArray();
                 ContractValidation.Require(command.Candidate || addition.All(o => GenericFeatureCapabilities.IsOperationQualified(o.Kind)), "Construction family not yet native-qualified.", V03FailureCodes.CapabilityUnavailable);
                 foreach (var o in requested.Operations.Where(o => o.Sketch is not null)) PlanarSketchPreflight.Prepare(o.Sketch!);
+                ContractValidation.Require(command.Candidate || GenericFeatureCapabilities.RadialProfileExecutable || !addition.Any(o => o.Sketch?.RadialProfile is not null),
+                    "Radial polyline drivers have not completed native qualification.", V03FailureCodes.CapabilityUnavailable);
             }
             else
             {
                 var edit = command.Edit!;
                 ContractValidation.Require(edit.ExpectedRevision == state.Revision && edit.Value != edit.ExpectedOldValue, "Edit revision/old value must match and change.");
-                var parameter = state.Parameters.SingleOrDefault(p => p.Owner == edit.Target && p.Key == edit.Parameter && (p.Qualified || command.Candidate));
+                var selected = GenericParameterSelection.Resolve(state.Parameters, edit.Target, edit.Parameter, edit.ParameterSemanticId);
+                var parameter = selected is not null && (selected.Qualified || command.Candidate) ? selected : null;
                 ContractValidation.Require(parameter is not null && Math.Abs(parameter.Value - edit.ExpectedOldValue) <= ContractLimits.LinearToleranceMm, "Scalar not qualified or expected old value differs.");
                 ContractValidation.Scalar(edit.Parameter, ScalarUnit.Millimeter, edit.Value);
                 var f = c.genericFeatures[edit.Target];
+                var profile = c.genericSketches[f.ProfileId].Specification;
+                ContractValidation.Require(profile.RadialProfile is null || command.Candidate || GenericFeatureCapabilities.RadialProfileExecutable,
+                    "Radial polyline edit remains candidate-only.", V03FailureCodes.CapabilityUnavailable);
+                var revised = edit.Parameter == ParameterKey.RevolveRadius ? profile.RadialProfile is null ? RevisedCircle(profile, edit.Value) :
+                    RadialProfilePolicy.Edit(profile, parameter!.SemanticId[(edit.Target.Length + ".radius.".Length)..], edit.ExpectedOldValue, edit.Value) : null;
+                if (revised?.RadialProfile is not null) _ = RadialProfilePolicy.NativeOrder(profile, revised);
                 program = state.Program with { Operations = state.Program.Operations.Select(o =>
-                    edit.Parameter == ParameterKey.RevolveRadius && o.SemanticId == f.ProfileId ? o with { Sketch = RevisedCircle(o.Sketch!, edit.Value) } :
+                    edit.Parameter == ParameterKey.RevolveRadius && o.SemanticId == f.ProfileId ? o with { Sketch = revised } :
                     o.SemanticId == edit.Target && edit.Parameter != ParameterKey.RevolveRadius ? o with { Depth = new(edit.Value) } : o).ToArray() };
                 addition = Array.Empty<ConstructionOperation>();
             }
             ContractValidation.Program(program);
             var expectation = c.GenericExpectation(program);
+            ContractValidation.Require(command.Candidate || GenericFeatureCapabilities.CrossAxisExecutable || expectation.Orthogonal is null,
+                "Orthogonal mixed-axis construction remains candidate-only.", V03FailureCodes.CapabilityUnavailable);
             var ids = addition.Length > 0 ? addition.Select(o => o.SemanticId).ToArray() : command.Edit!.Parameter == ParameterKey.RevolveRadius ?
                 new[] { c.genericFeatures[command.Edit.Target].ProfileId, command.Edit.Target } : new[] { command.Edit.Target };
-            var changes = new ChangeSet(ids, command.Edit is null ? Array.Empty<string>() : state.Parameters.Where(p => p.Owner == command.Edit.Target && p.Key == command.Edit.Parameter).Select(p => p.SemanticId).ToArray(), Array.Empty<string>())
+            var changedParameters = command.Edit is null ? Array.Empty<string>() : state.Parameters.Where(p => p.Owner == command.Edit.Target && p.Key == command.Edit.Parameter &&
+                (command.Edit.Parameter != ParameterKey.RevolveRadius || c.genericSketches[c.genericFeatures[p.Owner].ProfileId].Specification.RadialProfile is null ||
+                    program.Operations.Single(o => o.SemanticId == c.genericFeatures[p.Owner].ProfileId).Sketch!.RadialProfile!.Drivers.Any(d => p.SemanticId == p.Owner + ".radius." + d.Id &&
+                        d.Radius != c.genericSketches[c.genericFeatures[p.Owner].ProfileId].Specification.RadialProfile!.Drivers.Single(old => old.Id == d.Id).Radius))).Select(p => p.SemanticId).ToArray();
+            var changes = new ChangeSet(ids, changedParameters, Array.Empty<string>())
             { CreatedFeatures = addition.Select(o => o.SemanticId).ToArray(), CreatedEntities = addition.Select(o => o.SemanticId).ToArray() };
             return new(command, program, addition, expectation, changes);
         }
@@ -430,6 +462,8 @@ public sealed partial class SolidWorksExecutionContext
             c.VerifyGeneric(state.Program);
             var live = c.ReadGenericState(state.Program, state.Revision);
             if (!GenericConstructionStatePolicy.MatchesNativeSnapshot(state, live)) throw new StateException("STATE_DRIFT_DETECTED", "Native state differs from authoritative generic state.");
+            foreach (var o in p.Addition.Where(o => o.EdgeTreatment is not null && c.genericFeatures.ContainsKey(o.EdgeTreatment.HostFeature.SemanticId)))
+                c.ProbeConvexEdge(o, p.Program);
         }
         public GenericRollback CaptureRollback(GenericConstructionState state, GenericPrepared p)
         {
@@ -441,8 +475,8 @@ public sealed partial class SolidWorksExecutionContext
         {
             c.MutationInProgress = true;
             DocumentIdentityAdapter.EnsurePersistentIds(c);
-            if (p.Command.Edit is { } edit) c.ApplyGenericEdit(edit);
-            else foreach (var operation in p.Addition) c.ExecuteGenericOperation(operation);
+            if (p.Command.Edit is { } edit) c.ApplyGenericEdit(edit, p.Program);
+            else foreach (var operation in p.Addition) c.ExecuteGenericOperation(operation, p.Program);
             foreach (var o in p.Program.Operations)
                 if (c.genericFeatures.TryGetValue(o.SemanticId, out var f)) c.genericFeatures[o.SemanticId] = f with { Operation = o };
             return p.Changes;
@@ -457,13 +491,22 @@ public sealed partial class SolidWorksExecutionContext
         public void StageState(GenericPrepared p, GenericConstructionState state) { c.genericState = state; c.MutationInProgress = false; }
         public void Rollback(GenericRollback saved)
         {
+            foreach (var sketch in saved.Before.Sketches.Where(s => s.Specification.RadialProfile is not null))
+            {
+                var owner = c.genericFeatures.Values.Single(f => f.ProfileId == sketch.SemanticId).Operation.SemanticId;
+                var values = saved.Before.Parameters.Where(p => p.Owner == owner && p.Key == ParameterKey.RevolveRadius)
+                    .ToDictionary(p => p.SemanticId[(owner.Length + ".radius.".Length)..], p => p.Value);
+                RadialSketchNative.Restore(c, c.genericSketches[sketch.SemanticId], sketch.Specification, values);
+            }
             foreach (var old in saved.Before.Parameters)
             {
                 if (old.Key == ParameterKey.RevolveRadius)
                 {
-                    var f = c.genericFeatures[old.Owner]; var s = c.genericSketches[f.ProfileId]; var circle = s.Specification.Entities.Single();
+                    var f = c.genericFeatures[old.Owner]; var s = c.genericSketches[f.ProfileId];
+                    if (s.Radial is not null) continue;
                     var d = PlanarSketchNative.Dimension(c, s.Dimensions.Single());
-                    if (d.SetSystemValue3(old.Value * (s.Dimensions[0].Kind == ConstraintKind.Diameter ? 2 : 1) / 1000, (int)swSetValueInConfiguration_e.swSetValue_InThisConfiguration, null!) != 0) throw new StateException("ROLLBACK_FAILED", "Radial restoration Setter failed.");
+                    var factor = s.Dimensions[0].Kind == ConstraintKind.Diameter ? 2 : 1;
+                    if (d.SetSystemValue3(old.Value * factor / 1000, (int)swSetValueInConfiguration_e.swSetValue_InThisConfiguration, null!) != 0) throw new StateException("ROLLBACK_FAILED", "Radial restoration Setter failed.");
                 }
                 else if (Math.Abs(c.NativeDepth(c.genericFeatures[old.Owner]) - old.Value) > PlanarSketchPreflight.ToleranceMm) c.SetGenericDepth(c.genericFeatures[old.Owner], old.Value);
             }
@@ -480,11 +523,18 @@ public sealed partial class SolidWorksExecutionContext
 
 public static class GenericFeatureCapabilities
 {
+    // Qualified box-union/disjoint principal-bore and terminal convex-edge
+    // domains only. Per-request material, ownership and restore proofs remain.
+    public static bool CrossAxisExecutable => true;
+    public static bool ConvexFilletExecutable => true;
+    // Qualified orthogonal half-sections only. Native driver ownership, safe
+    // intermediate order and complete material proof remain per-request gates.
+    public static bool RadialProfileExecutable => true;
     // Each pair has native create/edit/readback and rollback evidence. Actual
     // profile ownership, independent driver and material proof still gate it.
     public static bool IsQualified(ConstructionKind kind, ParameterKey parameter) => (kind, parameter) is
         (ConstructionKind.CreateRevolvedBoss, ParameterKey.RevolveRadius) or
         (ConstructionKind.CreateAdditiveBoss, ParameterKey.AdditiveBossDepth) or
         (ConstructionKind.CreateExtrudedCut, ParameterKey.CutDepth);
-    public static bool IsOperationQualified(ConstructionKind kind) => V03ContractCapabilities.Construction.Any(c => c.Kind == kind && c.Executable);
+    public static bool IsOperationQualified(ConstructionKind kind) => kind == ConstructionKind.ApplyFillet ? ConvexFilletExecutable : V03ContractCapabilities.Construction.Any(c => c.Kind == kind && c.Executable);
 }

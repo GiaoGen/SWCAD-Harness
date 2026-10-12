@@ -125,7 +125,10 @@ public static class PlanarSketchPreflight
         foreach (var outer in loops.Where(l => !l.Inner))
             Check(!loops.Any(l => l != outer && !l.Inner && Contains(l, outer.Primitives[0].Start)), "Nested outer loops are ambiguous.");
         ValidateConstraints(sketch, points, entities);
-        return new(sketch, loops, flat, "Explicit point coordinates drive placement; noncircle primitives are fixed to that supplied geometry; circle centers are fixed and only declared radial dimensions drive radius. No inferred dimensions/default positions.");
+        if (sketch.RadialProfile is not null) RadialProfilePolicy.Validate(sketch);
+        return new(sketch, loops, flat, sketch.RadialProfile is null ?
+            "Explicit point coordinates drive placement; noncircle primitives are fixed to that supplied geometry; circle centers are fixed and only declared radial dimensions drive radius. No inferred dimensions/default positions." :
+            "Orthogonal half-section: fixed origin, native axial station dimensions and native radial driver dimensions. Typed offset rules propagate atomically through the Harness, not through inferred native equations.");
     }
     private static SketchPrimitive Line(string id, int ordinal, SketchPoint2 a, SketchPoint2 b)
     { Check((b - a).Length > ToleranceMm, "Zero-length primitive."); return new(id, ordinal, a, b, null, 0, 0); }

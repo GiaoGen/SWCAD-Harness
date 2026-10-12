@@ -210,7 +210,7 @@ internal static partial class T1Tests
         Program.Check(passed, "Independent T1 geometry failed");
     }
     private static T[] NativeItems<T>(object value) => value is Array array ? array.Cast<object>().OfType<T>().ToArray() : Array.Empty<T>();
-    private static void TorusOracle(IModelDoc2 doc, double radius, Action<string, object> log)
+    internal static void TorusOracle(IModelDoc2 doc, double radius, Action<string, object> log)
     {
         var body = NativeItems<IBody2>(((IPartDoc)doc).GetBodies2(0, false)).Single();
         var volume = ((double[])body.GetMassProperties(1))[3] * 1e9;

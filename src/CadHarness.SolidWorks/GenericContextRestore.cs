@@ -12,10 +12,10 @@ public sealed partial class SolidWorksExecutionContext
     public GenericRevisionPackage CaptureGenericRevisionPackage(GenericProvenance? provenance = null)
     {
         var state = CaptureGenericConstructionState();
-        var package = new GenericRevisionPackage("0.3", "generic_construction", 1, state,
+        var package = new GenericRevisionPackage("0.3", "generic_construction", state.Program.Operations.Any(o => o.EdgeTreatment is not null) ? 3 : state.Sketches.Any(s => s.Specification.RadialProfile is not null) ? 2 : 1, state,
             genericSketches.Values.Select(s => new GenericSketchImage(s.SemanticId, s.Primitives.Select(p => p.Reference).ToArray(),
-                s.Dimensions.Select(d => new GenericDimensionImage(d.EntityId, d.Kind, d.CircleReference)).ToArray(), s.NativeModelToSketchTransform, s.Revision)).ToArray(),
-            genericFeatures.Values.Select(f => new GenericFeatureImage(f.Operation.SemanticId, f.ProfileId, f.NativeReverse, f.AxisLine, f.AxisSketch, f.AxisDatum)).ToArray(), provenance);
+                s.Dimensions.Select(d => new GenericDimensionImage(d.EntityId, d.Kind, d.CircleReference)).ToArray(), s.NativeModelToSketchTransform, s.Revision) { Radial = s.Radial }).ToArray(),
+            genericFeatures.Values.Select(f => new GenericFeatureImage(f.Operation.SemanticId, f.ProfileId, f.NativeReverse, f.AxisLine, f.AxisSketch, f.AxisDatum) { Edge = f.Edge }).ToArray(), provenance);
         GenericRevisionValidation.Validate(package); return package;
     }
     public void RestoreGenericRevisionPackage(GenericRevisionPackage package)
@@ -48,7 +48,7 @@ public sealed partial class SolidWorksExecutionContext
                     var geometry = PlanarSketchPreflight.Prepare(s.Specification).Primitives;
                     var binding = new PlanarSketchBinding(ConstructionDocumentId, state.Document.ConfigurationName, s.SemanticId, s.Placement, s.Specification, s.Plane, s.Profile,
                         geometry.Select((p, i) => new NativeSketchPrimitive(p, image.Primitives[i])).ToArray(),
-                        image.Dimensions.Select(d => new NativeSketchDimension(d.EntityId, d.Kind, d.CircleReference)).ToArray(), image.ModelToSketchTransform, image.Revision);
+                        image.Dimensions.Select(d => new NativeSketchDimension(d.EntityId, d.Kind, d.CircleReference)).ToArray(), image.ModelToSketchTransform, image.Revision) { Radial = image.Radial };
                     genericSketches.Add(s.SemanticId, binding); _ = ReadPlanarSketch(binding);
                     Register(o.SemanticId + ".profile", SemanticType.SketchProfile, o.SemanticId, feature);
                     var origin = SketchFrames.World(s.Placement, new(0, 0));
@@ -76,7 +76,7 @@ public sealed partial class SolidWorksExecutionContext
                         if (axisOwner != b.AxisSketch || axis is null || !NativeTopology.Objects<IFeature>(axis.GetParents()).Any(p => PersistentReferenceAdapter.Capture(this, p) == b.AxisSketch))
                             throw new StateException("BINDING_AMBIGUOUS", "Axis line/sketch/datum ownership differs.");
                     }
-                    genericFeatures.Add(o.SemanticId, new(o, n.Reference, b.ProfileId, b.NativeReverse, b.AxisLine, b.AxisSketch, b.AxisDatum));
+                    genericFeatures.Add(o.SemanticId, new(o, n.Reference, b.ProfileId, b.NativeReverse, b.AxisLine, b.AxisSketch, b.AxisDatum) { Edge = b.Edge });
                     var body = PersistentReferenceAdapter.Resolve<IBody2>(this, state.Solid!.Reference).NativeObject
                         ?? throw new StateException("STALE_REFERENCE", "Cold single body identity differs.");
                     Register(o.SemanticId + ".body", SemanticType.BodyRef, o.SemanticId, body);

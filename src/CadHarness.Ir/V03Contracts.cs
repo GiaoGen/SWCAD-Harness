@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace CadHarness.Ir.V03;
 
 // Contract-only vocabulary. It is intentionally absent from OperationKind and OperationRegistry.
-public enum ConstructionKind { CreateSketch, CreateDatumPlane, CreateExtrude, CreateRevolvedBoss, CreateAdditiveBoss, CreateExtrudedCut }
+public enum ConstructionKind { CreateSketch, CreateDatumPlane, CreateExtrude, CreateRevolvedBoss, CreateAdditiveBoss, CreateExtrudedCut, ApplyFillet }
+public enum PrincipalAxis { X, Y, Z }
+public enum BoundarySide { Minimum, Maximum }
 public enum RequestMode { CreateModel, ManagedScalarEdit, ExternalScalarEdit, EditSet }
 public enum ModelOrigin { Harness, External }
 public enum RequirementSource { Given, DerivedByRule, Defaulted, Unresolved }
@@ -45,11 +48,26 @@ public sealed record SketchLoop(string Id, bool Inner, IReadOnlyList<string> Ent
 public sealed record SketchConstraint(string Id, ConstraintKind Kind, IReadOnlyList<string> References,
     PositiveLength? Dimension);
 public sealed record ClosedSketch(IReadOnlyList<LocalPoint> Points, IReadOnlyList<SketchEntity> Entities,
-    IReadOnlyList<SketchLoop> Loops, IReadOnlyList<SketchConstraint> Constraints, ConstraintStatus Status);
+    IReadOnlyList<SketchLoop> Loops, IReadOnlyList<SketchConstraint> Constraints, ConstraintStatus Status)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RadialProfile? RadialProfile { get; init; }
+}
+public sealed record RadialDriver(string Id, PositiveLength Radius);
+public sealed record RadialPointBinding(string PointId, string? DriverId);
+public sealed record RadialOffsetRelation(string Id, string SourceDriver, string TargetDriver, PositiveLength Offset);
+public sealed record RadialProfile(int Version, IReadOnlyList<RadialDriver> Drivers,
+    IReadOnlyList<RadialPointBinding> Points, IReadOnlyList<RadialOffsetRelation> Relations);
 public sealed record ConstructionOperation(string Id, ConstructionKind Kind, string SemanticId,
     SpatialPlacement? Placement, ClosedSketch? Sketch, SemanticReference? Profile, SemanticReference? Axis,
     SemanticReference? HostBody, EndCondition? EndCondition, Direction? Direction,
-    PositiveLength? Depth, double? AngleDegrees, BodyRule? BodyRule);
+    PositiveLength? Depth, double? AngleDegrees, BodyRule? BodyRule)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ConvexEdgeTreatment? EdgeTreatment { get; init; }
+}
+public sealed record ConvexEdgeTreatment(int Version, SemanticReference HostFeature, PrincipalAxis EdgeAxis,
+    BoundarySide FirstSide, BoundarySide SecondSide, PositiveLength Radius);
 public sealed record ConstructionProgram(string ProgramVersion, ModelOrigin Origin, RequestMode Mode,
     string RequirementRecordId, IReadOnlyList<ConstructionOperation> Operations);
 

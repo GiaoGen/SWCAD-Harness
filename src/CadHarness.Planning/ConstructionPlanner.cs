@@ -80,6 +80,8 @@ public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IS
         foreach (var kind in runtime.ExecutableKinds.Concat(runtime.Prefix.Select(o => o.Kind)).Distinct())
         {
             var shape = operation.DeepClone().AsObject(); var fields = shape["properties"]!.AsObject();
+            fields["edgeTreatment"] = new JsonObject { ["type"] = "null" };
+            shape["required"]!.AsArray().Add("edgeTreatment");
             fields["kind"]!["enum"] = new JsonArray(JsonNamingPolicy.SnakeCaseLower.ConvertName(kind.ToString()));
             void Null(string key) => fields[key] = new JsonObject { ["type"] = "null" };
             void NonNull(string key) => fields[key] = fields[key]!["anyOf"]![0]!.DeepClone();
@@ -93,6 +95,11 @@ public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IS
                 {
                     NonNull("sketch");
                     var sketch = fields["sketch"]!["properties"]!;
+                    // T2's typed native API is not yet part of the Planner
+                    // projection. Preserve strict provider fields without
+                    // advertising radial drivers ahead of T4 qualification.
+                    sketch["radialProfile"] = new JsonObject { ["type"] = "null" };
+                    fields["sketch"]!["required"]!.AsArray().Add("radialProfile");
                     sketch["entities"]!["minItems"] = 1; sketch["entities"]!["maxItems"] = 1;
                     sketch["entities"]!["items"]!["properties"]!["kind"]!["enum"] = new JsonArray("circle", "polyline", "slot");
                     sketch["loops"]!["minItems"] = 1; sketch["loops"]!["maxItems"] = 1;

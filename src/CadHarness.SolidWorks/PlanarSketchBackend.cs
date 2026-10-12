@@ -15,7 +15,10 @@ public sealed record NativeSketchPrimitive(SketchPrimitive Geometry, NativePersi
 public sealed record NativeSketchDimension(string EntityId, ConstraintKind Kind, NativePersistentReference CircleReference);
 public sealed record PlanarSketchBinding(Guid SessionId, string Configuration, string SemanticId, SpatialPlacement Placement,
     ClosedSketch Specification, NativePersistentReference Plane, NativePersistentReference Profile,
-    IReadOnlyList<NativeSketchPrimitive> Primitives, IReadOnlyList<NativeSketchDimension> Dimensions, IReadOnlyList<double> NativeModelToSketchTransform, long Revision);
+    IReadOnlyList<NativeSketchPrimitive> Primitives, IReadOnlyList<NativeSketchDimension> Dimensions, IReadOnlyList<double> NativeModelToSketchTransform, long Revision)
+{
+    public NativeRadialProfile? Radial { get; init; }
+}
 public sealed record SketchPrimitiveReadback(string EntityId, int Ordinal, V StartMm, V EndMm, V? CenterMm, double RadiusMm, double LengthMm);
 public sealed record PlanarSketchReadback(int SolverStatus, IReadOnlyList<SketchPrimitiveReadback> Primitives,
     IReadOnlyDictionary<string, double> DimensionsMm, bool ReferencesStable);
@@ -37,6 +40,8 @@ public sealed partial class SolidWorksExecutionContext
             operation.Profile is null && operation.Axis is null && operation.HostBody is null && operation.EndCondition is null && operation.Direction is null &&
             operation.Depth is null && operation.AngleDegrees is null && operation.BodyRule is null, "Expected a typed sketch operation without feature fields.");
         var prepared = PlanarSketchPreflight.Prepare(operation.Sketch!);
+        ContractValidation.Require(withinTransaction || prepared.Specification.RadialProfile is null || GenericFeatureCapabilities.RadialProfileExecutable,
+            "Radial polyline driver construction remains candidate-only.", V03FailureCodes.CapabilityUnavailable);
         ContractValidation.Placement(operation.Placement!);
         if (outputs.ContainsKey(operation.SemanticId) || outputs.ContainsKey(operation.SemanticId + ".profile")) throw new StateException("BINDING_AMBIGUOUS", "Sketch semantic identity already exists.");
         var plane = ResolveSketchPlane(operation.Placement!);
@@ -242,6 +247,7 @@ internal static class PlanarSketchNative
         (point.X * m[1] + point.Y * m[4] + point.Z * m[7]) * m[12] + m[10], (point.X * m[2] + point.Y * m[5] + point.Z * m[8]) * m[12] + m[11]);
     internal static PlanarSketchBinding Create(SolidWorksExecutionContext context, string id, SpatialPlacement placement, PreparedPlanarSketch prepared, object plane)
     {
+        if (prepared.Specification.RadialProfile is not null) return RadialSketchNative.Create(context, id, placement, prepared, plane);
         var doc = context.Document; var manager = (ISketchManager)doc.SketchManager;
         // A rebuild can invalidate the original face COM handle. Freeze its
         // identity before mutation and resolve that exact reference afterward.
@@ -390,6 +396,9 @@ internal static class PlanarSketchNative
             if (Math.Abs(value - expected) > ContractLimits.LinearToleranceMm) throw new StateException("STATE_DRIFT_DETECTED", "Driving dimension differs.");
             dims.Add(d.EntityId, value);
         }
+        if (binding.Radial is not null)
+            foreach (var pair in RadialSketchNative.Read(context, binding)) dims.Add(pair.Key, pair.Value);
+        else if (binding.Specification.RadialProfile is not null) throw new StateException("UNSUPPORTED_PARAMETER_DRIVER", "Missing radial native binding.");
         return new(status, observed, dims, true);
     }
 }

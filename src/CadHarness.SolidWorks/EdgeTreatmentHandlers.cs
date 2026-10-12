@@ -34,12 +34,14 @@ public sealed class ApplyFilletHandler : EdgeTreatmentHandler
     protected override object? CreateNative(SolidWorksExecutionContext context, OperationNode operation)
     {
         SelectEdges(context, operation, 1);
-        return ((IFeatureManager)context.Document.FeatureManager).FeatureFillet3(
+        return CreateSimpleUniform(context.Document, operation.Parameter<LengthParameter>("radiusMm").Millimeters);
+    }
+    internal static IFeature? CreateSimpleUniform(IModelDoc2 document, double radiusMm) =>
+        (IFeature?)((IFeatureManager)document.FeatureManager).FeatureFillet3(
             (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius,
-            Millimeters.ToMeters(operation.Parameter<LengthParameter>("radiusMm").Millimeters), 0, 0,
+            Millimeters.ToMeters(radiusMm), 0, 0,
             (int)swFeatureFilletType_e.swFeatureFilletType_Simple, 0, 0,
             null, null, null, null, null, null, null);
-    }
     protected override void ValidateFeature(SolidWorksExecutionContext context, OperationNode operation, object native)
     {
         Require(((IFeature)native).GetDefinition() is ISimpleFilletFeatureData2, "Fillet definition is missing.");

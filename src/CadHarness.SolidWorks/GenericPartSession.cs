@@ -129,6 +129,10 @@ public sealed class GenericPartSession : IGenericRevisionNative, IDisposable
     }
     public MutationResult Edit(GenericScalarCommand command)
     { RequireEditable(); var result = Context.EditGenericScalar(command); Finish(result); return result; }
+    internal MutationResult ConstructCandidate(ConstructionProgram program)
+    { RequireEditable(); var result = Context.ConstructGenericCandidate(program); Finish(result); return result; }
+    internal MutationResult EditCandidate(GenericScalarCommand command)
+    { RequireEditable(); var result = Context.EditGenericScalarCandidate(command); Finish(result); return result; }
     private void Finish(MutationResult result)
     {
         if (File.Exists(Store.RecoveryPath) || result.RollbackAttempted && !result.RollbackSucceeded)
