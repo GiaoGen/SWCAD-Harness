@@ -10,7 +10,12 @@ public sealed record RequirementRule(string SemanticKey, string RuleId, string? 
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? Inputs { get; init; }
 }
-public sealed record ConstructionPlanRequest(RequirementRecord Input, IReadOnlyList<RequirementRule> Rules);
+public sealed record ConstructionPlanRequest(RequirementRecord Input, IReadOnlyList<RequirementRule> Rules)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? SemanticDraftVersion { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<EditabilityRequirement>? EditabilityRequirements { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<DeclaredRadialDependency>? DesignDependencies { get; init; }
+}
 public enum RequirementMetric { Depth, Angle, ProfileWidth, ProfileHeight, ProfileCenterX, ProfileCenterY,
     CircleRadius, CircleDiameter, SlotWidth, SlotLength, OriginX, OriginY, OriginZ, Offset, InPlaneAngle,
     AxialStation, AxialSpan, RadialDriverRadius, RadialOffset, FilletRadius, SlotEndRadius }
@@ -31,6 +36,7 @@ public static class ConstructionRequirements
     public static RequirementRecord Normalize(ConstructionPlanRequest request)
     {
         ContractValidation.Requirements(request.Input);
+        ContractValidation.Require(request.SemanticDraftVersion is null or 1,"Unsupported semantic planning request version.");
         ContractValidation.Require(request.Input.Requirements.All(r => r.Source is RequirementSource.Given or RequirementSource.Unresolved),
             "Input anchors must be given or explicitly unresolved; rules are applied separately.");
         ContractValidation.Require(request.Rules.Count <= ContractLimits.Requirements, "Rule count exceeds limit.");
@@ -63,6 +69,7 @@ public static class ConstructionRequirements
         }
         var record = request.Input with { Requirements = values.ToArray() };
         ContractValidation.Requirements(record);
+        SemanticConstructionCompiler.ValidateRequestRoles(request,record);
         return ContractJson.Read<RequirementRecord>(ContractJson.Write(record, ContractValidation.Requirements), ContractValidation.Requirements);
     }
 

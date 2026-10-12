@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CadHarness.Ir.V03;
 using CadHarness.Planning;
 using CadHarness.State;
@@ -13,9 +14,10 @@ namespace CadHarness.SolidWorks;
 
 public sealed record PersistedConstructionPlan(ConstructionPlanRequest Request,ConstructionPlanResponse Response,string CapabilityJson,string ContextIdentity,string Sha256,long BeforeRevision,int PrefixCount)
 {
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public ConstructionCompilation? Compilation {get;init;}
     public ConstructionPlanResponse ReadResponse()=>Response;
-    internal AcceptedConstructionPlan ToAccepted()=>new(ContractJson.Write(Request,r=>{_=ConstructionRequirements.Normalize(r);}),ContractJson.Write(Response,ConstructionRequirements.ValidateResponse),CapabilityJson,ContextIdentity,Sha256,BeforeRevision,PrefixCount);
-    internal static PersistedConstructionPlan Capture(AcceptedConstructionPlan p)=>new(ContractJson.Read<ConstructionPlanRequest>(p.RequestJson,r=>{_=ConstructionRequirements.Normalize(r);}),p.ReadResponse(),p.CapabilityJson,p.ContextIdentity,p.Sha256,p.BeforeRevision,p.PrefixCount);
+    internal AcceptedConstructionPlan ToAccepted()=>new AcceptedConstructionPlan(ContractJson.Write(Request,r=>{_=ConstructionRequirements.Normalize(r);}),ContractJson.Write(Response,ConstructionRequirements.ValidateResponse),CapabilityJson,ContextIdentity,Sha256,BeforeRevision,PrefixCount){Compilation=Compilation};
+    internal static PersistedConstructionPlan Capture(AcceptedConstructionPlan p)=>new PersistedConstructionPlan(ContractJson.Read<ConstructionPlanRequest>(p.RequestJson,r=>{_=ConstructionRequirements.Normalize(r);}),p.ReadResponse(),p.CapabilityJson,p.ContextIdentity,p.Sha256,p.BeforeRevision,p.PrefixCount){Compilation=p.Compilation};
 }
 public sealed record PlanningHistoryStep(long BeforeRevision,PersistedConstructionPlan? Plan,GenericScalarCommand? Edit);
 public sealed record PlanningHistory(int Version,long BaselineRevision,ConstructionProgram Baseline,IReadOnlyList<PlanningHistoryStep> Steps);
@@ -45,7 +47,9 @@ internal static class GenericPlanningProvenance
                 var request=ContractJson.Read<ConstructionPlanRequest>(plan.RequestJson,r=>{_=ConstructionRequirements.Normalize(r);});var response=plan.ReadResponse();
                 ContractValidation.Require(new AcceptedRequirements(response.Requirements).Json==new AcceptedRequirements(ConstructionRequirements.Normalize(request)).Json,"Accepted request/response requirements differ.");
                 _=ConstructionPreflight.Evaluate(response.Program!,program.Operations);ConstructionRequirements.VerifyGeometry(response,program.Operations,request);
-                var hash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(plan.ContextIdentity+"\n"+plan.BeforeRevision+"\n"+plan.CapabilityJson+"\n"+plan.RequestJson+"\n"+plan.ResponseJson))).ToLowerInvariant();
+                SemanticConstructionCompiler.VerifyCompilation(request,response,plan.Compilation);
+                var compilation=plan.Compilation is null?null:ContractJson.Write(plan.Compilation,_=>{});
+                var hash=AcceptedConstructionPlan.ComputeHash(plan.ContextIdentity,plan.BeforeRevision,plan.CapabilityJson,plan.RequestJson,plan.ResponseJson,compilation);
                 ContractValidation.Require(hash==plan.Sha256,"Accepted immutable plan hash differs.");program=response.Program!;
             }
             else program=ReplayEdit(program,step.Edit!,revision);
@@ -81,7 +85,10 @@ internal static class GenericPlanningProvenance
     }
     private static GenericProvenance Write(PlanningHistory h)
     {
-        var payload=ContractJson.Write(h,Validate);
+        // Whitespace is not provenance. Preserve every field while avoiding
+        // multiplying pretty-print overhead in the bounded metadata container.
+        using var json=JsonDocument.Parse(ContractJson.Write(h,Validate));
+        var payload=JsonSerializer.Serialize(json.RootElement);
         ContractValidation.Require(payload.Length<=65536,"Planning history exceeds the existing provenance bound.");
         return new("1",Kind,payload);
     }

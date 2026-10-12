@@ -33,6 +33,8 @@ public sealed class SolidWorksConstructionPlanningRuntime : IConstructionPlannin
         CapabilityJson = JsonSerializer.Serialize(new
         {
             backend = "solidworks-v0.3-qualified-construction", mode = "create_model", origin = "harness", revision,
+            semanticCompiler=new {version=SemanticConstructionCompiler.Version,newModelOnly=true,qualifiedScalarPairs=new[]{"create_revolved_boss/revolve_radius (independent radial driver)","create_additive_boss/additive_boss_depth","create_extruded_cut/cut_depth"}},
+            canonicalPlanes=new[]{new{id="world.xy",origin=new[]{0,0,0},x=new[]{1,0,0},y=new[]{0,1,0},normal=new[]{0,0,1}},new{id="world.xz",origin=new[]{0,0,0},x=new[]{1,0,0},y=new[]{0,0,-1},normal=new[]{0,1,0}},new{id="world.yz",origin=new[]{0,0,0},x=new[]{0,1,0},y=new[]{0,0,1},normal=new[]{1,0,0}}},
             operations = ExecutableKinds.Select(k => JsonNamingPolicy.SnakeCaseLower.ConvertName(k.ToString())),
             initialReferences = new[] { new { semanticId = "world.xy", type = "reference_plane" }, new { semanticId = "world.xz", type = "reference_plane" },
                 new { semanticId = "world.yz", type = "reference_plane" }, new { semanticId = "world.axis_x", type = "reference_axis" },

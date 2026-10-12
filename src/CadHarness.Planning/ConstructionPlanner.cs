@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using CadHarness.Ir.V03;
@@ -35,13 +36,15 @@ public sealed class ConstructionPlanPreview
     public string ContextIdentity { get; }
     public long Revision { get; }
     public string CapabilityJson { get; }
+    public string? CompilationJson { get; }
     public ConstructionPlanResponse Read() => ContractJson.Read<ConstructionPlanResponse>(ResponseJson, ConstructionRequirements.ValidateResponse);
-    internal ConstructionPlanPreview(ConstructionPlanResponse response, ConstructionPlanRequest request, IConstructionPlanningRuntime runtime)
+    internal ConstructionPlanPreview(ConstructionPlanResponse response, ConstructionPlanRequest request, IConstructionPlanningRuntime runtime,ConstructionCompilation? compilation=null)
     {
         ResponseJson = ContractJson.Write(response, ConstructionRequirements.ValidateResponse);
         RequestJson = ContractJson.Write(request, r => { _ = ConstructionRequirements.Normalize(r); });
         ContextIdentity = runtime.ContextIdentity; Revision = runtime.Revision; CapabilityJson=runtime.CapabilityJson;
-        Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ContextIdentity + "\n" + Revision + "\n" + CapabilityJson + "\n" + RequestJson + "\n" + ResponseJson))).ToLowerInvariant();
+        CompilationJson=compilation is null?null:ContractJson.Write(compilation,_=>{});
+        Sha256 = AcceptedConstructionPlan.ComputeHash(ContextIdentity,Revision,CapabilityJson,RequestJson,ResponseJson,CompilationJson);
     }
     public ConstructionExecutionApproval Approve(string expectedSha256)
     {
@@ -66,12 +69,17 @@ public sealed class ConstructionExecutionApproval
         var request=ContractJson.Read<ConstructionPlanRequest>(preview.RequestJson,r=>{_=ConstructionRequirements.Normalize(r);});
         current.Preflight(response.Program!);
         ConstructionRequirements.VerifyGeometry(response, current.Prefix, request);
-        return new(preview.RequestJson,preview.ResponseJson,preview.CapabilityJson,preview.ContextIdentity,preview.Sha256,preview.Revision,current.Prefix.Count);
+        var compilation=preview.CompilationJson is null?null:ContractJson.Read<ConstructionCompilation>(preview.CompilationJson,_=>{});
+        SemanticConstructionCompiler.VerifyCompilation(request,response,compilation);
+        return new AcceptedConstructionPlan(preview.RequestJson,preview.ResponseJson,preview.CapabilityJson,preview.ContextIdentity,preview.Sha256,preview.Revision,current.Prefix.Count){Compilation=compilation};
     }
 }
 public sealed record AcceptedConstructionPlan(string RequestJson,string ResponseJson,string CapabilityJson,string ContextIdentity,string Sha256,long BeforeRevision,int PrefixCount)
 {
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public ConstructionCompilation? Compilation {get;init;}
     public ConstructionPlanResponse ReadResponse()=>ContractJson.Read<ConstructionPlanResponse>(ResponseJson,ConstructionRequirements.ValidateResponse);
+    public static string ComputeHash(string context,long revision,string capability,string request,string response,string? compilation=null)=>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(context+"\n"+revision+"\n"+capability+"\n"+request+"\n"+response+(compilation is null?"":"\ncompiled:v1\n"+compilation)))).ToLowerInvariant();
 }
 
 public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IStructuredPlanSource source)
@@ -170,6 +178,22 @@ public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IS
             ContractValidation.Require(normalized.Revision == runtime.Revision, "Requirement revision must match current context.", V03FailureCodes.PreviewExpired);
             var accepted = new AcceptedRequirements(normalized);
             ContractValidation.Require(runtime.ExecutableKinds.Count > 0, "No qualified construction capability in this context.", V03FailureCodes.CapabilityUnavailable);
+            if(request.SemanticDraftVersion is not null)
+            {
+                ContractValidation.Require(runtime.Prefix.Count==0,"Semantic v1 lowering only supports new owned models; use the strict direct continuation path.",V03FailureCodes.CapabilityUnavailable);
+                var semanticSchema=SemanticConstructionCompiler.ResponseSchema(request,runtime);
+                calls=source.IsModelBacked?1:0;
+                raw=await source.GenerateAsync(new(SemanticConstructionCompiler.Instructions(request,runtime),normalized.Intent,SemanticConstructionCompiler.CapabilityProjection(runtime),semanticSchema),cancellationToken).ConfigureAwait(false);
+                var draft=ContractJson.Read<SemanticConstructionDraft>(raw.Json,SemanticConstructionCompiler.ValidateDraft);
+                if(draft.Outcome==PlanOutcome.NeedsClarification)
+                {
+                    ContractValidation.Require(normalized.Requirements.Any(r=>r.Critical && (r.Value is null || r.Ambiguous)),"Clarification cannot hide a malformed model plan.");
+                    return Result(ConstructionPlanningStatus.NeedsClarification,V03FailureCodes.NeedsClarification,"Critical input required; no compiled plan.",questions:draft.Questions);
+                }
+                if(draft.Outcome==PlanOutcome.Unsupported)return Result(ConstructionPlanningStatus.Unsupported,V03FailureCodes.CapabilityUnavailable,draft.Reason!);
+                var compiled=SemanticConstructionCompiler.Compile(request,draft);runtime.Preflight(compiled.Response.Program!);
+                return Result(ConstructionPlanningStatus.Planned,null,"Compiled complete semantic plan; strict preflight passed; explicit approval required.",new(compiled.Response,request,runtime,compiled.Evidence));
+            }
             var instructions = "Produce ONE complete v0.3 construction plan, not a sequence of tool decisions. Never execute CAD. " +
                 "Return exactly the response schema. planned requires program object, questions=[], reason=null. " +
                 "needs_clarification requires program=null, one or more critical questions, reason=null, bindings=[]. " +
@@ -208,6 +232,7 @@ public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IS
                 "Plan uses an unavailable native handler.", V03FailureCodes.CapabilityUnavailable);
             runtime.Preflight(response.Program!);
             ConstructionRequirements.VerifyGeometry(response, runtime.Prefix,request);
+            SemanticConstructionCompiler.VerifyCompilation(request,response,null);
             return Result(ConstructionPlanningStatus.Planned, null, "Validated complete plan; explicit approval required; no native mutation.", new(response, request, runtime));
         }
         catch (OperationCanceledException) { return Result(ConstructionPlanningStatus.Cancelled, "PLANNER_CANCELLED", "Planning cancelled; no mutation."); }
