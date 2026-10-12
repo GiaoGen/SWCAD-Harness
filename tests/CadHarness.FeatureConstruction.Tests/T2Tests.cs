@@ -7,6 +7,9 @@ using CadHarness.SolidWorks.Tests;
 using CadHarness.State;
 using CadHarness.State.V03;
 using SolidWorks.Interop.sldworks;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("CadHarness.ConstructionPlanning.Tests")]
 
 internal static partial class T2Tests
 {
@@ -162,7 +165,7 @@ internal static partial class T2Tests
         public void VerifySavedGeneric(GenericRevisionPackage package) => throw new NotSupportedException("Metadata audit is not native verification.");
     }
     private static T[] Items<T>(object value) => value is Array a ? a.Cast<object>().OfType<T>().ToArray() : Array.Empty<T>();
-    private static void Oracle(IModelDoc2 doc, bool sleeve, double primary, Action<string, object> log)
+    internal static void Oracle(IModelDoc2 doc, bool sleeve, double primary, Action<string, object> log)
     {
         // Expected stations/radii and integrals belong to the frozen test only;
         // no production material calculator, binder or state supplies this oracle.

@@ -16,7 +16,8 @@ public static class V03ContractCapabilities
         new ConstructionContractDescriptor(ConstructionKind.CreateExtrude, "create_extrude", "Initial single-body prism with bounded laminar material proof", true),
         new ConstructionContractDescriptor(ConstructionKind.CreateRevolvedBoss, "create_revolved_boss", "Single-body revolution about the exact profile-local X axis", true),
         new ConstructionContractDescriptor(ConstructionKind.CreateAdditiveBoss, "create_additive_boss", "Parallel-plane extrusion merged with retained tracked material", true),
-        new ConstructionContractDescriptor(ConstructionKind.CreateExtrudedCut, "create_extruded_cut", "Blind or through-all removal with bounded single-body material proof", true)
+        new ConstructionContractDescriptor(ConstructionKind.CreateExtrudedCut, "create_extruded_cut", "Blind or through-all removal with bounded single-body material proof", true),
+        new ConstructionContractDescriptor(ConstructionKind.ApplyFillet,"apply_fillet","Terminal uniform fillet on one exact convex orthogonal host edge",true)
     });
 
     public static void RequireMode(RequestMode expected, RequestMode actual, ModelOrigin origin)

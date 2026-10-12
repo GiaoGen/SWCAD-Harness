@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -55,6 +56,7 @@ public static class ContractJson
         new NullabilityInfoContext().Create(property).ReadState == NullabilityState.Nullable;
     private static string Name(PropertyInfo property) => JsonNamingPolicy.CamelCase.ConvertName(property.Name);
     private static bool Optional(PropertyInfo property) => property.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition == JsonIgnoreCondition.WhenWritingNull;
+    private static int StringBound(PropertyInfo property)=>property.GetCustomAttribute<StringLengthAttribute>()?.MaximumLength ?? 10924;
     private static string EnumName(object value) => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString()!);
     private static Type? Item(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) ? type.GetGenericArguments()[0] : null;
     private static JsonObject Shape(Type type, bool nullable)
@@ -72,6 +74,11 @@ public static class ContractJson
         foreach (var p in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             var property = Shape(p.PropertyType, AllowsNull(p));
+            if(p.PropertyType==typeof(string) && p.GetCustomAttribute<StringLengthAttribute>() is not null)
+            {
+                var text=AllowsNull(p)?property["anyOf"]![0]!:property;
+                text["maxLength"]=StringBound(p);
+            }
             if (p.Name is "SchemaVersion" or "ProgramVersion")
             {
                 if (type.Name == "ArtifactIdentity") property["enum"] = new JsonArray("0.2", "0.3");
@@ -105,12 +112,12 @@ public static class ContractJson
         }
         return new() { ["type"] = "object", ["additionalProperties"] = false, ["properties"] = properties, ["required"] = required };
     }
-    private static void Check(JsonElement e, Type type, bool nullable, string path, int depth)
+    private static void Check(JsonElement e, Type type, bool nullable, string path, int depth,int maximumStringLength=10924)
     {
         if (depth > 32) Invalid("JSON nesting exceeds limit.");
         if (Nullable.GetUnderlyingType(type) is { } underlying) { type = underlying; nullable = true; }
         if (e.ValueKind == JsonValueKind.Null) { if (!nullable) Invalid(path + " is required and nonnull."); return; }
-        if (type == typeof(string)) { if (e.ValueKind != JsonValueKind.String || e.GetString()!.Length > 10924) Invalid(path + " must be a bounded string."); return; }
+        if (type == typeof(string)) { if (e.ValueKind != JsonValueKind.String || e.GetString()!.Length > maximumStringLength) Invalid(path + " must be a bounded string."); return; }
         if (type == typeof(Guid)) { if (e.ValueKind != JsonValueKind.String || !Guid.TryParse(e.GetString(), out _)) Invalid(path + " must be a UUID."); return; }
         if (type == typeof(bool)) { if (e.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) Invalid(path + " must be boolean."); return; }
         if (type == typeof(double) || type == typeof(int) || type == typeof(long))
@@ -126,7 +133,7 @@ public static class ContractJson
         {
             if (!seen.Add(p.Name)) Invalid(path + " has duplicate field " + p.Name);
             if (!properties.TryGetValue(p.Name, out var definition)) Invalid(path + " has unknown field " + p.Name);
-            Check(p.Value, definition!.PropertyType, AllowsNull(definition), path + "." + p.Name, depth + 1);
+            Check(p.Value, definition!.PropertyType, AllowsNull(definition), path + "." + p.Name, depth + 1,StringBound(definition));
         }
         if (properties.Any(p => !Optional(p.Value) && !seen.Contains(p.Key))) Invalid(path + " is missing required fields.");
     }

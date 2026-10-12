@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using CadHarness.Ir.V03;
+using CadHarness.Planning;
 using CadHarness.State;
 using CadHarness.State.V03;
 using SolidWorks.Interop.sldworks;
@@ -122,13 +123,27 @@ public sealed class GenericPartSession : IGenericRevisionNative, IDisposable
     }
     public MutationResult Construct(ConstructionProgram program, GenericProvenance? acceptedProvenance = null)
     {
-        RequireEditable(); var previous = provenance; provenance = acceptedProvenance ?? provenance;
+        RequireEditable(); var previous = provenance; var next=acceptedProvenance ?? provenance;
+        try { var before=Context.CaptureGenericConstructionState();GenericPlanningProvenance.Verify(next,before with {Program=program,Revision=checked(before.Revision+1)}); }
+        catch(ContractException e){return new(false,e.Code,e.Message,"provenance preflight",false,false,false,false,false,false,null,ChangeSet.Empty,null,null);}
+        provenance=next;
         var result = Context.ConstructGeneric(program);
-        if (!result.Succeeded) provenance = previous;
+        if (!result.StateCommitted) provenance = previous;
         Finish(result); return result;
     }
     public MutationResult Edit(GenericScalarCommand command)
-    { RequireEditable(); var result = Context.EditGenericScalar(command); Finish(result); return result; }
+    {
+        RequireEditable();var previous=provenance;
+        try {provenance=GenericPlanningProvenance.AppendEdit(provenance,Context.CaptureGenericConstructionState(),command);}
+        catch(ContractException e){return new(false,e.Code,e.Message,"provenance preflight",false,false,false,false,false,false,null,ChangeSet.Empty,null,null);}
+        var result=Context.EditGenericScalar(command);if(!result.StateCommitted)provenance=previous;Finish(result);return result;
+    }
+    public MutationResult ExecuteConstructionPlan(ConstructionExecutionApproval approval)
+    {
+        RequireEditable();var before=Context.CaptureGenericConstructionState();var current=SolidWorksConstructionPlanningRuntime.ForManagedSession(Context);
+        var accepted=approval.ConsumeAccepted(current);var record=GenericPlanningProvenance.AppendPlan(provenance,before,accepted);
+        return Construct(accepted.ReadResponse().Program!,record);
+    }
     internal MutationResult ConstructCandidate(ConstructionProgram program)
     { RequireEditable(); var result = Context.ConstructGenericCandidate(program); Finish(result); return result; }
     internal MutationResult EditCandidate(GenericScalarCommand command)

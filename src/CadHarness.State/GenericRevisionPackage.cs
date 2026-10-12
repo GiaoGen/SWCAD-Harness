@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -25,7 +26,7 @@ public sealed record GenericFeatureImage(string SemanticId, string ProfileId, bo
     public GenericEdgeImage? Edge { get; init; }
 }
 public sealed record GenericEdgeImage(NativePersistentReference Edge, NativePersistentReference HostFeature, IReadOnlyList<NativePersistentReference> FaceOwners);
-public sealed record GenericProvenance(string Version, string Kind, string Payload);
+public sealed record GenericProvenance(string Version, string Kind,[property: StringLength(65536)] string Payload);
 public sealed record GenericRevisionPackage(string SchemaVersion, string PackageType, int FormatVersion,
     GenericConstructionState State, IReadOnlyList<GenericSketchImage> SketchBindings,
     IReadOnlyList<GenericFeatureImage> FeatureBindings, GenericProvenance? Provenance);

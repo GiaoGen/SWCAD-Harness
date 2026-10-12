@@ -33,6 +33,9 @@ internal static partial class Program
     {
         try
         {
+            if(args.Length==3 && args[1]=="--t4-pure")return T4Tests.Pure(args[0],args[2]);
+            if(args.Length is 3 or 4 && args[1]=="--t4-live")return T4Tests.Live(args[0],args[2],args.Length==4?args[3]:null);
+            if(args.Length==7 && args[1]=="--t4-native")return T4Tests.Native(args[0],args[2],args[3],args[4],args[5],args[6]);
             if (args.Length == 2 && args[1] == "--pure") return Pure(args[0]);
             if (args.Length == 3 && args[1] == "--live") return Live(args[0], args[2]);
             if (args.Length == 3 && args[1] == "--live-targeted") return Live(args[0], args[2], true);

@@ -12,6 +12,7 @@ public sealed partial class SolidWorksExecutionContext
     public GenericRevisionPackage CaptureGenericRevisionPackage(GenericProvenance? provenance = null)
     {
         var state = CaptureGenericConstructionState();
+        GenericPlanningProvenance.Verify(provenance,state);
         var package = new GenericRevisionPackage("0.3", "generic_construction", state.Program.Operations.Any(o => o.EdgeTreatment is not null) ? 3 : state.Sketches.Any(s => s.Specification.RadialProfile is not null) ? 2 : 1, state,
             genericSketches.Values.Select(s => new GenericSketchImage(s.SemanticId, s.Primitives.Select(p => p.Reference).ToArray(),
                 s.Dimensions.Select(d => new GenericDimensionImage(d.EntityId, d.Kind, d.CircleReference)).ToArray(), s.NativeModelToSketchTransform, s.Revision) { Radial = s.Radial }).ToArray(),
@@ -26,6 +27,7 @@ public sealed partial class SolidWorksExecutionContext
         try
         {
             GenericRevisionValidation.Validate(package); var state = package.State;
+            GenericPlanningProvenance.Verify(package.Provenance,state);
             VerifyManagedIdentity(state.Document);
             if (Document.GetActiveSketch2() is not null || Document.Extension.NeedsRebuild2 != 0)
                 throw new StateException("FEATURE_REBUILD_FAILED", "Cold native document is not stable.");

@@ -122,7 +122,7 @@ internal static partial class T3Tests
         public void VerifySavedGeneric(GenericRevisionPackage package)=>throw new NotSupportedException("Metadata is not native verification");
     }
     private static T[] Items<T>(object? value)=>value is Array a?a.Cast<object>().OfType<T>().ToArray():Array.Empty<T>();
-    private static void Oracle(IModelDoc2 document,double height,bool fillet,Action<string,object> log)
+    internal static void Oracle(IModelDoc2 document,double height,bool fillet,Action<string,object> log)
     {
         // Frozen test geometry and independent native measurement; no production
         // material proof, selector, binding or expected state is used here.

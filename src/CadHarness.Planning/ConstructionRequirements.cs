@@ -1,15 +1,24 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 using CadHarness.Ir.V03;
 
 namespace CadHarness.Planning;
 
-public sealed record RequirementRule(string SemanticKey, string RuleId, string? InputKey);
+public sealed record RequirementRule(string SemanticKey, string RuleId, string? InputKey)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? Inputs { get; init; }
+}
 public sealed record ConstructionPlanRequest(RequirementRecord Input, IReadOnlyList<RequirementRule> Rules);
 public enum RequirementMetric { Depth, Angle, ProfileWidth, ProfileHeight, ProfileCenterX, ProfileCenterY,
-    CircleRadius, CircleDiameter, SlotWidth, SlotLength, OriginX, OriginY, OriginZ, Offset, InPlaneAngle }
-public sealed record GeometryRequirementBinding(string SemanticKey, string Target, RequirementMetric Metric);
+    CircleRadius, CircleDiameter, SlotWidth, SlotLength, OriginX, OriginY, OriginZ, Offset, InPlaneAngle,
+    AxialStation, AxialSpan, RadialDriverRadius, RadialOffset, FilletRadius, SlotEndRadius }
+public sealed record GeometryRequirementBinding(string SemanticKey, string Target, RequirementMetric Metric)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Element { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? EndElement { get; init; }
+}
 public sealed record ConstructionPlanResponse(string SchemaVersion, PlanOutcome Outcome, RequirementRecord Requirements,
     ConstructionProgram? Program, IReadOnlyList<string> Questions, string? Reason, IReadOnlyList<GeometryRequirementBinding> Bindings);
 
@@ -17,7 +26,8 @@ public sealed record ConstructionPlanResponse(string SchemaVersion, PlanOutcome 
 public static class ConstructionRequirements
 {
     public const string RuleVersion = "1";
-    public static IReadOnlyList<string> RuleIds { get; } = Array.AsReadOnly(new[] { "layout_zero", "layout_zero_angle", "half_dimension", "copy_dimension" });
+    public static IReadOnlyList<string> RuleIds { get; } = Array.AsReadOnly(new[] { "layout_zero", "layout_zero_angle", "half_dimension", "copy_dimension", "sum_dimensions", "difference_dimensions", "negative_dimension", "full_revolution", "cosmetic_convex_radius", "bracket_cosmetic_corner", "capsule_end_radius" });
+    public static IReadOnlyList<string> InputKeys(RequirementRule rule) => rule.Inputs ?? (rule.InputKey is null ? Array.Empty<string>() : new[] { rule.InputKey });
     public static RequirementRecord Normalize(ConstructionPlanRequest request)
     {
         ContractValidation.Requirements(request.Input);
@@ -28,16 +38,25 @@ public static class ConstructionRequirements
         foreach (var rule in request.Rules)
         {
             ContractValidation.Require(ContractValidation.Id(rule.SemanticKey) && values.All(v => v.SemanticKey != rule.SemanticKey), "Rule key must be new.");
-            var input = values.SingleOrDefault(v => v.SemanticKey == rule.InputKey);
+            var keys = InputKeys(rule);
+            ContractValidation.Require(!(rule.Inputs is not null && rule.InputKey is not null) && keys.Count <= 16 && keys.All(ContractValidation.Id), "Invalid finite rule input inventory.");
+            var inputs = keys.Select(k => values.SingleOrDefault(v => v.SemanticKey == k)).ToArray();
+            ContractValidation.Require(inputs.All(i => i is { Value: not null, Ambiguous: false, Unit: ScalarUnit.Millimeter }), "Rule input must resolve an earlier millimeter fact; cycles/forward references refuse.");
+            var input = inputs.FirstOrDefault();
             var r = rule.RuleId switch
             {
-                "layout_zero" when rule.InputKey is null => new Requirement(rule.SemanticKey, 0, ScalarUnit.Millimeter,
+                "layout_zero" when keys.Count == 0 => new Requirement(rule.SemanticKey, 0, ScalarUnit.Millimeter,
                     RequirementSource.Defaulted, rule.RuleId, RuleVersion, 1, false, false),
-                "layout_zero_angle" when rule.InputKey is null => new Requirement(rule.SemanticKey, 0, ScalarUnit.Degree,
+                "layout_zero_angle" when keys.Count == 0 => new Requirement(rule.SemanticKey, 0, ScalarUnit.Degree,
                     RequirementSource.Defaulted, rule.RuleId, RuleVersion, 1, false, false),
-                "half_dimension" or "copy_dimension" when input is { Value: not null, Ambiguous: false, Unit: ScalarUnit.Millimeter } =>
-                    new Requirement(rule.SemanticKey, input.Value / (rule.RuleId == "half_dimension" ? 2 : 1), input.Unit,
+                "half_dimension" or "copy_dimension" or "negative_dimension" or "capsule_end_radius" when keys.Count == 1 =>
+                    new Requirement(rule.SemanticKey, input!.Value * (rule.RuleId is "half_dimension" or "capsule_end_radius" ? .5 : rule.RuleId == "negative_dimension" ? -1 : 1), input.Unit,
                         RequirementSource.DerivedByRule, rule.RuleId, RuleVersion, input.Confidence, false, false),
+                "sum_dimensions" or "difference_dimensions" when (rule.RuleId == "sum_dimensions" ? keys.Count >= 2 : keys.Count == 2) =>
+                    new Requirement(rule.SemanticKey, rule.RuleId == "sum_dimensions" ? inputs.Sum(i => i!.Value!.Value) : inputs[0]!.Value - inputs[1]!.Value,
+                        ScalarUnit.Millimeter, RequirementSource.DerivedByRule, rule.RuleId, RuleVersion, inputs.Min(i => i!.Confidence), false, false),
+                "full_revolution" when keys.Count == 0 => new Requirement(rule.SemanticKey,360,ScalarUnit.Degree,RequirementSource.DerivedByRule,rule.RuleId,RuleVersion,1,false,false),
+                "cosmetic_convex_radius" or "bracket_cosmetic_corner" when keys.Count == 0 => new Requirement(rule.SemanticKey,1,ScalarUnit.Millimeter,RequirementSource.Defaulted,rule.RuleId,RuleVersion,1,false,false),
                 _ => throw new ContractException(V03FailureCodes.ContractInvalid, "Unknown rule or unresolved/incompatible rule input.")
             };
             values.Add(r);
@@ -52,21 +71,25 @@ public static class ConstructionRequirements
         ContractValidation.Response(new(response.SchemaVersion, response.Outcome, response.Requirements, response.Program, response.Questions, response.Reason));
         ContractValidation.Require(response.Bindings.Count <= ContractLimits.Requirements &&
             (response.Outcome == PlanOutcome.Planned || response.Bindings.Count == 0), "Nonplanned responses cannot bind executable geometry.");
-        ContractValidation.Unique(response.Bindings.Select(b => b.Target + ":" + b.Metric), "geometry requirement binding");
+        ContractValidation.Unique(response.Bindings.Select(b => b.Target + ":" + b.Metric + ":" + b.Element + ":" + b.EndElement), "geometry requirement binding");
         foreach (var b in response.Bindings)
-            ContractValidation.Require(ContractValidation.Id(b.SemanticKey) && ContractValidation.Id(b.Target) && Enum.IsDefined(b.Metric), "Invalid geometry binding.");
+            ContractValidation.Require(ContractValidation.Id(b.SemanticKey) && ContractValidation.Id(b.Target) && Enum.IsDefined(b.Metric) &&
+                (b.Metric is RequirementMetric.AxialStation or RequirementMetric.AxialSpan or RequirementMetric.RadialDriverRadius or RequirementMetric.RadialOffset ? ContractValidation.Id(b.Element) : b.Element is null) &&
+                (b.Metric == RequirementMetric.AxialSpan ? ContractValidation.Id(b.EndElement) : b.EndElement is null), "Invalid exact geometry binding selector.");
     }
 
-    public static void VerifyGeometry(ConstructionPlanResponse response, IReadOnlyList<ConstructionOperation> prefix)
+    public static void VerifyGeometry(ConstructionPlanResponse response, IReadOnlyList<ConstructionOperation> prefix, ConstructionPlanRequest? request = null)
     {
+        if(request is not null)ContractValidation.Require(new AcceptedRequirements(Normalize(request)).Json==new AcceptedRequirements(response.Requirements).Json,"Rule provenance does not reproduce accepted facts.");
         var requirements = response.Requirements.Requirements.ToDictionary(r => r.SemanticKey, StringComparer.Ordinal);
         var operations = response.Program!.Operations.ToDictionary(o => o.SemanticId, StringComparer.Ordinal);
-        var measured = new Dictionary<(string Target, RequirementMetric Metric), double>();
-        void Add(string id, RequirementMetric metric, double value) => measured.Add((id, metric), value);
+        var measured = new Dictionary<(string Target, RequirementMetric Metric, string? Element, string? End), double>();
+        void Add(string id, RequirementMetric metric, double value, string? element = null, string? end = null) => measured.Add((id, metric, element, end), value);
         foreach (var o in response.Program.Operations.Skip(prefix.Count))
         {
             if (o.Depth is { } depth) Add(o.SemanticId, RequirementMetric.Depth, depth.Millimeters);
             if (o.AngleDegrees is { } angle) Add(o.SemanticId, RequirementMetric.Angle, angle);
+            if (o.EdgeTreatment is { } edge) Add(o.SemanticId,RequirementMetric.FilletRadius,edge.Radius.Millimeters);
             if (o.Placement is { } placement)
             {
                 Add(o.SemanticId, RequirementMetric.OriginX, placement.Frame.OriginMm.X);
@@ -83,6 +106,21 @@ public static class ConstructionRequirements
             if (o.Sketch is not { } sketch) continue;
             // M17's planning subset is explicit; the M15 native vocabulary remains unchanged.
             var prepared = PlanarSketchPreflight.Prepare(sketch);
+            ContractValidation.Require(sketch.Entities.Count==1 && sketch.Entities[0].Points.ToHashSet().SetEquals(sketch.Points.Select(p=>p.Id)),"Planner profile has unconsumed point coordinates.");
+            if(sketch.RadialProfile is { } radial)
+            {
+                RadialProfilePolicy.Validate(sketch);
+                foreach(var point in sketch.Points) Add(o.SemanticId,RequirementMetric.AxialStation,point.X.Millimeters,point.Id);
+                foreach(var driver in radial.Drivers) Add(o.SemanticId,RequirementMetric.RadialDriverRadius,driver.Radius.Millimeters,driver.Id);
+                foreach(var relation in radial.Relations) Add(o.SemanticId,RequirementMetric.RadialOffset,relation.Offset.Millimeters,relation.Id);
+                foreach(var binding in response.Bindings.Where(b=>b.Target==o.SemanticId && b.Metric==RequirementMetric.AxialSpan))
+                {
+                    var a=sketch.Points.SingleOrDefault(p=>p.Id==binding.Element);var b=sketch.Points.SingleOrDefault(p=>p.Id==binding.EndElement);
+                    ContractValidation.Require(a is not null && b is not null && b.X.Millimeters>a.X.Millimeters,"Span requires ordered exact axial points.");
+                    Add(o.SemanticId,RequirementMetric.AxialSpan,b!.X.Millimeters-a!.X.Millimeters,binding.Element,binding.EndElement);
+                }
+                continue;
+            }
             ContractValidation.Require(sketch.Entities.Count == 1 && sketch.Loops.Count == 1 && !sketch.Loops[0].Inner,
                 "Planning requires a single circle, slot or rectangular outline; other explicit sketches remain native-only.", V03FailureCodes.CapabilityUnavailable);
             var e = sketch.Entities[0];
@@ -101,6 +139,7 @@ public static class ConstructionRequirements
                     "Planner slot orientation must be explicit local X.", V03FailureCodes.CapabilityUnavailable);
                 Add(o.SemanticId, RequirementMetric.SlotWidth, e.Width!.Millimeters);
                 Add(o.SemanticId, RequirementMetric.SlotLength, e.Length!.Millimeters);
+                Add(o.SemanticId, RequirementMetric.SlotEndRadius, e.Width.Millimeters / 2);
             }
             else
             {
@@ -113,22 +152,36 @@ public static class ConstructionRequirements
                 Add(o.SemanticId, RequirementMetric.ProfileHeight, bounds.MaxY - bounds.MinY);
             }
         }
-        var covered = new HashSet<(string, RequirementMetric)>();
+        var covered = new HashSet<(string, RequirementMetric, string?, string?)>();
         var used = new HashSet<string>(StringComparer.Ordinal);
+        var ruleGraph=request?.Rules.ToDictionary(r=>r.SemanticKey);
+        void CheckSource(Requirement r,GeometryRequirementBinding b,HashSet<string> visited)
+        {
+            if(!visited.Add(r.SemanticKey))return;
+            var cosmeticDefault=b.Metric==RequirementMetric.FilletRadius && r.RuleId is "cosmetic_convex_radius" or "bracket_cosmetic_corner" && !r.Critical && requirements[b.SemanticKey].Value==1;
+            var layoutDefault=r.RuleId is "layout_zero" or "layout_zero_angle" && b.Metric is RequirementMetric.ProfileCenterX or RequirementMetric.ProfileCenterY or RequirementMetric.OriginX or RequirementMetric.OriginY or RequirementMetric.OriginZ or RequirementMetric.Offset or RequirementMetric.InPlaneAngle or RequirementMetric.AxialStation;
+            ContractValidation.Require(r.Source != RequirementSource.Defaulted || cosmeticDefault || layoutDefault,
+                "Disclosed defaults, including derived ancestors, cannot fund functional dimensions.");
+            if(r.RuleId=="full_revolution") ContractValidation.Require(b.Metric==RequirementMetric.Angle && operations[b.Target].EndCondition==EndCondition.FullRevolution,"Structural full-turn rule cannot fund another dimension.");
+            if(ruleGraph?.TryGetValue(r.SemanticKey,out var rule)==true)foreach(var key in InputKeys(rule)) CheckSource(requirements[key],b,visited);
+        }
         foreach (var b in response.Bindings)
         {
             ContractValidation.Require(requirements.TryGetValue(b.SemanticKey, out var r) && r.Value is not null && !r.Ambiguous &&
-                operations.ContainsKey(b.Target) && measured.TryGetValue((b.Target, b.Metric), out _), "Requirement binding must refer to resolved, new geometry.");
+                operations.ContainsKey(b.Target) && measured.TryGetValue((b.Target, b.Metric,b.Element,b.EndElement), out _), "Requirement binding must refer to resolved, new geometry.");
             var expectedUnit = b.Metric is RequirementMetric.Angle or RequirementMetric.InPlaneAngle ? ScalarUnit.Degree : ScalarUnit.Millimeter;
-            ContractValidation.Require(r!.Unit == expectedUnit && Math.Abs(measured[(b.Target, b.Metric)] - r.Value!.Value) <= PlanarSketchPreflight.ToleranceMm,
+            ContractValidation.Require(r!.Unit == expectedUnit && Math.Abs(measured[(b.Target, b.Metric,b.Element,b.EndElement)] - r.Value!.Value) <= PlanarSketchPreflight.ToleranceMm,
                 "Planned geometry contradicts an accepted requirement.");
-            ContractValidation.Require(r.Source != RequirementSource.Defaulted || b.Metric is RequirementMetric.ProfileCenterX or RequirementMetric.ProfileCenterY or
-                RequirementMetric.OriginX or RequirementMetric.OriginY or RequirementMetric.OriginZ or RequirementMetric.Offset or RequirementMetric.InPlaneAngle,
-                "Layout defaults cannot invent size, fit or performance dimensions.");
-            covered.Add((b.Target, b.Metric)); used.Add(b.SemanticKey);
+            CheckSource(r,b,new HashSet<string>(StringComparer.Ordinal));
+            covered.Add((b.Target, b.Metric,b.Element,b.EndElement)); used.Add(b.SemanticKey);
         }
         ContractValidation.Require(covered.SetEquals(measured.Keys), "Every independent geometry dimension/placement requires disclosed input or a finite rule.");
-        // A diameter may feed half_dimension; strength/fit/material facts cannot be silently ignored.
+        if(request is not null)
+        {
+            var rules=request.Rules.ToDictionary(r=>r.SemanticKey);
+            void Trace(string key) { if(!rules.TryGetValue(key,out var rule))return; foreach(var input in InputKeys(rule)) if(used.Add(input)) Trace(input); }
+            foreach(var key in used.ToArray()) Trace(key);
+        }
         ContractValidation.Require(requirements.Values.Where(r => r.Critical || r.Source == RequirementSource.Given && r.Value is not null).All(r => used.Contains(r.SemanticKey)),
             "Every critical or explicit given requirement must bind verified geometry; unsupported claims cannot be silently ignored.");
     }

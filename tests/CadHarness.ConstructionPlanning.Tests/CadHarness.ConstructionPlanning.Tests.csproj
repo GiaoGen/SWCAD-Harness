@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/CadHarness.SolidWorks/CadHarness.SolidWorks.csproj" />
+    <ProjectReference Include="../CadHarness.FeatureConstruction.Tests/CadHarness.FeatureConstruction.Tests.csproj" Aliases="FeatureOracle" />
     <Compile Include="../CadHarness.SolidWorks.Tests/NativeTestBudget.cs" Link="NativeTestBudget.cs" />
     <Compile Include="../CadHarness.SolidWorks.Tests/NativeResourceGuard.cs" Link="NativeResourceGuard.cs" />
     <Compile Include="../CadHarness.SolidWorks.Tests/TestPartScope.cs" Link="TestPartScope.cs" />

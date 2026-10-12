@@ -70,7 +70,7 @@ internal static class Program
             results.Add(new { name = test.Name, passed = error is null, error });
             Console.WriteLine((error is null ? "PASS " : "FAIL ") + test.Name + (error is null ? "" : ": " + error));
         }
-        var output = Path.Combine(root, "artifacts", "milestone11"); Directory.CreateDirectory(output);
+        var output = args.Length>2 && args[1]=="--output" ? Path.GetFullPath(args[2]) : Path.Combine(root, "artifacts", "milestone11"); Directory.CreateDirectory(output);
         File.WriteAllText(Path.Combine(output, "pure-results.json"), JsonSerializer.Serialize(new
         { milestone = 11, passed = Cases.Count - failures, failed = failures, nativePartsCreated = 0, nativeOpenCycles = 0, nativePartsClosed = 0, results }, new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(Path.Combine(output, "capability-contracts.json"), JsonSerializer.Serialize(new
@@ -157,8 +157,9 @@ internal static class Program
         Add("qualified scalar descriptor passes capability gate only", () => NativeQualificationCandidates.RequireExecutable(Observation, "boss", ParameterKey.ExtrusionDepth));
         Add("read-only target rejects before executable gate", () => Bad(() => NativeQualificationCandidates.RequireExecutable(Observation, "unknown_feature", ParameterKey.ExtrusionDepth), V03FailureCodes.ObservedOnlyTarget));
         Add("only four M14A scalar pairs qualified", () => Assert(NativeQualificationCandidates.Rows.Count == 4 && NativeQualificationCandidates.Rows.All(r => r.Qualified)));
-        Add("M16 explicit six-family projection preserves the old registry", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 &&
-            V03ContractCapabilities.Construction.Count == 6 && V03ContractCapabilities.Construction.All(c => c.Executable)));
+        Add("qualified construction projection preserves old registry and adds bounded fillet", () => Assert(Enum.GetValues<OperationKind>().Length == 9 && OperationRegistry.Default.Contracts.Count == 9 &&
+            V03ContractCapabilities.Construction.Count == 7 && V03ContractCapabilities.Construction.All(c => c.Executable) &&
+            V03ContractCapabilities.Construction.Count(c=>c.Kind==ConstructionKind.ApplyFillet)==1));
         Add("M15 planar operation gate keeps feature kinds closed", () =>
         {
             V03ContractCapabilities.RequirePlanarOperation(ConstructionKind.CreateSketch);
