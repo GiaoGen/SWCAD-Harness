@@ -36,7 +36,7 @@ internal static class GenericPlanningProvenance
     {
         ContractValidation.Require(h.Version==1 && h.BaselineRevision>=0 && h.Steps.Count is >0 and <=64 && h.Baseline.Origin==ModelOrigin.Harness,"Invalid planning history version/baseline.");
         if(h.Baseline.Operations.Count>0)ContractValidation.Program(h.Baseline);
-        var program=h.Baseline;var revision=h.BaselineRevision;
+        var program=h.Baseline;var revision=h.BaselineRevision;PersistedConstructionPlan? active=null;var overrides=new List<GenericScalarCommand>();
         foreach(var step in h.Steps)
         {
             ContractValidation.Require(step.BeforeRevision==revision && (step.Plan is null)!=(step.Edit is null),"Planning history revision or event tag differs.");
@@ -50,9 +50,13 @@ internal static class GenericPlanningProvenance
                 SemanticConstructionCompiler.VerifyCompilation(request,response,plan.Compilation);
                 var compilation=plan.Compilation is null?null:ContractJson.Write(plan.Compilation,_=>{});
                 var hash=AcceptedConstructionPlan.ComputeHash(plan.ContextIdentity,plan.BeforeRevision,plan.CapabilityJson,plan.RequestJson,plan.ResponseJson,compilation);
-                ContractValidation.Require(hash==plan.Sha256,"Accepted immutable plan hash differs.");program=response.Program!;
+                ContractValidation.Require(hash==plan.Sha256,"Accepted immutable plan hash differs.");program=response.Program!;active=saved;overrides.Clear();
             }
-            else program=ReplayEdit(program,step.Edit!,revision);
+            else
+            {
+                program=ReplayEdit(program,step.Edit!,revision);overrides.Add(step.Edit!);
+                if(active?.Request.SemanticDraftVersion==2)RadialTaskAdmission.VerifyOverrides(active.Request,active.Response,program,overrides.Where(e=>e.Parameter==ParameterKey.RevolveRadius).Select(e=>new RadialSourceOverride(e.Target,e.ParameterSemanticId,e.Value)).ToArray());
+            }
             revision++;
         }
     }

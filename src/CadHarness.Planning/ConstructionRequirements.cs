@@ -15,6 +15,7 @@ public sealed record ConstructionPlanRequest(RequirementRecord Input, IReadOnlyL
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? SemanticDraftVersion { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<EditabilityRequirement>? EditabilityRequirements { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<DeclaredRadialDependency>? DesignDependencies { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public ConstructionGeometryRequirements? GeometryRequirements { get; init; }
 }
 public enum RequirementMetric { Depth, Angle, ProfileWidth, ProfileHeight, ProfileCenterX, ProfileCenterY,
     CircleRadius, CircleDiameter, SlotWidth, SlotLength, OriginX, OriginY, OriginZ, Offset, InPlaneAngle,
@@ -36,7 +37,8 @@ public static class ConstructionRequirements
     public static RequirementRecord Normalize(ConstructionPlanRequest request)
     {
         ContractValidation.Requirements(request.Input);
-        ContractValidation.Require(request.SemanticDraftVersion is null or 1,"Unsupported semantic planning request version.");
+        ContractValidation.Require(request.SemanticDraftVersion is null or 1 or 2,"Unsupported semantic planning request version.");
+        ContractValidation.Require(request.GeometryRequirements is null || request.SemanticDraftVersion==2,"Typed geometry obligations require semantic v2.");
         ContractValidation.Require(request.Input.Requirements.All(r => r.Source is RequirementSource.Given or RequirementSource.Unresolved),
             "Input anchors must be given or explicitly unresolved; rules are applied separately.");
         ContractValidation.Require(request.Rules.Count <= ContractLimits.Requirements, "Rule count exceeds limit.");
@@ -70,6 +72,7 @@ public static class ConstructionRequirements
         var record = request.Input with { Requirements = values.ToArray() };
         ContractValidation.Requirements(record);
         SemanticConstructionCompiler.ValidateRequestRoles(request,record);
+        RadialTaskAdmission.ValidateRequest(request,record);
         return ContractJson.Read<RequirementRecord>(ContractJson.Write(record, ContractValidation.Requirements), ContractValidation.Requirements);
     }
 

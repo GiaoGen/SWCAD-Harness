@@ -33,6 +33,11 @@ internal static partial class Program
     {
         try
         {
+            if(args.Length==3 && args[1]=="--t4c-pure")return T4CTests.Pure(args[0],args[2]);
+            if(args.Length==3 && args[1]=="--t4c-live")return T4CTests.Live(args[0],args[2]);
+            if(args.Length==4 && args[1]=="--t4c-mapping")return T4CTests.Mapping(args[0],args[2],args[3]);
+            if(args.Length==7 && args[1]=="--t4c-native")return T4Tests.Native(args[0],args[2],args[3],args[4],args[5],args[6],true,2);
+            if(args.Length==5 && args[1]=="--t4c-compat")return T4Tests.Native(args[0],args[2],args[3],"read",args[4],"fixture",true,1,"T4C","T4B");
             if(args.Length==3 && args[1]=="--t4b-pure")return T4BTests.Pure(args[0],args[2]);
             if(args.Length is 3 or 4 && args[1]=="--t4b-live")return T4BTests.Live(args[0],args[2],args.Length==4?args[3]:null);
             if(args.Length==7 && args[1]=="--t4b-native")return T4Tests.Native(args[0],args[2],args[3],args[4],args[5],args[6],true);

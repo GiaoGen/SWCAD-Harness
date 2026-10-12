@@ -181,17 +181,20 @@ public sealed class ConstructionPlanner(IConstructionPlanningRuntime runtime, IS
             if(request.SemanticDraftVersion is not null)
             {
                 ContractValidation.Require(runtime.Prefix.Count==0,"Semantic v1 lowering only supports new owned models; use the strict direct continuation path.",V03FailureCodes.CapabilityUnavailable);
-                var semanticSchema=SemanticConstructionCompiler.ResponseSchema(request,runtime);
+                var v2=request.SemanticDraftVersion==2;
+                var semanticSchema=v2?SemanticConstructionV2.ResponseSchema(request,runtime):SemanticConstructionCompiler.ResponseSchema(request,runtime);
                 calls=source.IsModelBacked?1:0;
-                raw=await source.GenerateAsync(new(SemanticConstructionCompiler.Instructions(request,runtime),normalized.Intent,SemanticConstructionCompiler.CapabilityProjection(runtime),semanticSchema),cancellationToken).ConfigureAwait(false);
-                var draft=ContractJson.Read<SemanticConstructionDraft>(raw.Json,SemanticConstructionCompiler.ValidateDraft);
-                if(draft.Outcome==PlanOutcome.NeedsClarification)
+                raw=await source.GenerateAsync(new(v2?SemanticConstructionV2.Instructions(request,runtime):SemanticConstructionCompiler.Instructions(request,runtime),normalized.Intent,SemanticConstructionCompiler.CapabilityProjection(runtime),semanticSchema),cancellationToken).ConfigureAwait(false);
+                var oldDraft=v2?null:ContractJson.Read<SemanticConstructionDraft>(raw.Json,SemanticConstructionCompiler.ValidateDraft);
+                var newDraft=v2?ContractJson.Read<SemanticConstructionDraftV2>(raw.Json,SemanticConstructionV2.ValidateDraft):null;
+                var outcome=newDraft?.Outcome??oldDraft!.Outcome;
+                if(outcome==PlanOutcome.NeedsClarification)
                 {
                     ContractValidation.Require(normalized.Requirements.Any(r=>r.Critical && (r.Value is null || r.Ambiguous)),"Clarification cannot hide a malformed model plan.");
-                    return Result(ConstructionPlanningStatus.NeedsClarification,V03FailureCodes.NeedsClarification,"Critical input required; no compiled plan.",questions:draft.Questions);
+                    return Result(ConstructionPlanningStatus.NeedsClarification,V03FailureCodes.NeedsClarification,"Critical input required; no compiled plan.",questions:newDraft?.Questions??oldDraft!.Questions);
                 }
-                if(draft.Outcome==PlanOutcome.Unsupported)return Result(ConstructionPlanningStatus.Unsupported,V03FailureCodes.CapabilityUnavailable,draft.Reason!);
-                var compiled=SemanticConstructionCompiler.Compile(request,draft);runtime.Preflight(compiled.Response.Program!);
+                if(outcome==PlanOutcome.Unsupported)return Result(ConstructionPlanningStatus.Unsupported,V03FailureCodes.CapabilityUnavailable,newDraft?.Reason??oldDraft!.Reason!);
+                var compiled=v2?SemanticConstructionV2.Compile(request,newDraft!):SemanticConstructionCompiler.Compile(request,oldDraft!);runtime.Preflight(compiled.Response.Program!);
                 return Result(ConstructionPlanningStatus.Planned,null,"Compiled complete semantic plan; strict preflight passed; explicit approval required.",new(compiled.Response,request,runtime,compiled.Evidence));
             }
             var instructions = "Produce ONE complete v0.3 construction plan, not a sequence of tool decisions. Never execute CAD. " +

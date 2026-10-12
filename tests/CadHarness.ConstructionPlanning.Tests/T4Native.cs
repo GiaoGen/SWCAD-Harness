@@ -11,9 +11,9 @@ using CadHarness.State;
 
 internal static partial class T4Tests
 {
-    internal static int Native(string root,string run,string model,string phase,string packageRun,string liveRun,bool compiled=false)
+    internal static int Native(string root,string run,string model,string phase,string packageRun,string liveRun,bool compiled=false,int semanticVersion=1,string? evidenceStage=null,string? packageStage=null)
     {
-        var stage=compiled?"T4B":"T4";
+        var stage=evidenceStage??(semanticVersion==2?"T4C":compiled?"T4B":"T4");
         if(phase=="audit")return Audit(root,run,stage);
         Program.Check(ContractValidation.Id(run) && ContractValidation.Id(packageRun) && model is "shaft" or "bracket" && phase is "create" or "edit" or "read","Invalid T4 integration slot");
         var output=Path.Combine(root,"artifacts/m20-preparation",stage,run,model,phase);var step=0;var timer=System.Diagnostics.Stopwatch.StartNew();
@@ -21,7 +21,7 @@ internal static partial class T4Tests
         using var budget=new NativeTestBudget(Path.Combine(root,"artifacts/m20-preparation/T4/native-budget.json"),"T4",int.MaxValue);
         using var connection=SolidWorksConnection.Connect(false);var before=NativeResourceGuard.DocumentTitles(connection.Application);var resource=NativeResourceGuard.Inspect(connection.Application,budget);
         Program.Check(resource.Responding && resource.GdiCount<7000 && budget.Snapshot.OpenTestOwnedTitles.Count==0,"Ownership/resource refusal");Log("before",new{resource,budget=budget.Snapshot,before});Log("source",new{source=Program.SourceHashes(root),binaries=Binaries()});
-        var package=Path.Combine(root,"artifacts/m20-preparation",stage,packageRun,model,"package");GenericPartSession? session=null;
+        var package=Path.Combine(root,"artifacts/m20-preparation",packageStage??stage,packageRun,model,"package");GenericPartSession? session=null;
         try
         {
             var lifecycle=new Lifecycle(budget,Log);
@@ -31,14 +31,15 @@ internal static partial class T4Tests
             if(phase=="create")
             {
                 var scene=T4Cases.All(root).Single(c=>c.Id==model);var semantic=compiled?T4BCases.All(root).Single(c=>c.Id==model):null;string response;var provenance="fixture";
-                if(liveRun=="fixture")response=semantic is null?Cases.Wire(scene.Response):ContractJson.Write(semantic.Draft,SemanticConstructionCompiler.ValidateDraft);
+                var v2=semanticVersion==2?T4CCases.All(root).Single(c=>c.Id==model):null;
+                if(liveRun=="fixture")response=v2 is not null?ContractJson.Write(v2.Draft,SemanticConstructionV2.ValidateDraft):semantic is null?Cases.Wire(scene.Response):ContractJson.Write(semantic.Draft,SemanticConstructionCompiler.ValidateDraft);
                 else
                 {
                     var path=Path.Combine(root,"artifacts/m20-preparation",stage,liveRun,model,"call-01-response.json");using var doc=JsonDocument.Parse(File.ReadAllText(path));response=doc.RootElement.GetProperty("response").GetProperty("Json").GetString()!;
                     Log("preserved-live-replay",new{path,sha256=ManagedRevisionStore.Hash(path),newModelCalls=0,unmodified=true});provenance="recorded_live_response_revalidated_in_fresh_native_context";
                 }
-                var plan=new ConstructionPlanner(SolidWorksConstructionPlanningRuntime.ForManagedSession(session.Context),new RecordingSource(response)).PlanAsync(semantic?.Request??scene.Request).GetAwaiter().GetResult();Log("plan",new{plan,provenance});Program.Check(plan.Preview is not null,"Native fresh preflight: "+plan.Message);
-                if(compiled){T4BTests.RequireTaskGeometry(root,semantic!,plan.Preview!.Read().Program!);Log("task-oracle-precheck",new{passed=true,structuralPassIsNotTaskPass=true});}
+                var plan=new ConstructionPlanner(SolidWorksConstructionPlanningRuntime.ForManagedSession(session.Context),new RecordingSource(response)).PlanAsync(v2?.Request??semantic?.Request??scene.Request).GetAwaiter().GetResult();Log("plan",new{plan,provenance});Program.Check(plan.Preview is not null,"Native fresh preflight: "+plan.Message);
+                if(compiled){if(v2 is not null)T4CTests.RequireTaskGeometry(root,v2,plan.Preview!.Read().Program!);else T4BTests.RequireTaskGeometry(root,semantic!,plan.Preview!.Read().Program!);Log("task-oracle-precheck",new{passed=true,structuralPassIsNotTaskPass=true});}
                 var approval=plan.Preview!.Approve(plan.Preview.Sha256);var result=session.ExecuteConstructionPlan(approval);Log("publish",result);Program.Check(result.Succeeded && result.StateCommitted && result.Revision==1,"Approved publication: "+result.Message+" / "+result.RollbackFailureMessage);
                 try{session.ExecuteConstructionPlan(approval);throw new Exception("Reused approval");}catch(ContractException e){Log("reuse-refused",new{e.Code});Program.Check(e.Code==V03FailureCodes.PreviewExpired,"Wrong approval refusal");}
             }
@@ -48,7 +49,9 @@ internal static partial class T4Tests
                 var b=accepted.Bindings.Single(b=>model=="shaft"?b.SemanticKey=="middle_radius" && b.Metric==RequirementMetric.RadialDriverRadius:b.SemanticKey=="leg_height" && b.Metric==RequirementMetric.Depth);
                 var owner=model=="shaft"?state.Program.Operations.Single(o=>o.Profile?.SemanticId==b.Target+".profile").SemanticId:b.Target;
                 var parameter=state.Parameters.Single(p=>p.SemanticId==owner+(model=="shaft"?".radius."+b.Element:".depth"));
-                var command=new GenericScalarCommand(owner,parameter.Key,parameter.Value,model=="shaft"?13:44,state.Revision,parameter.SemanticId);Log("request",command);var result=session.Edit(command);Log("edit",result);Program.Check(result.Succeeded && result.StateCommitted && result.Revision==2,"Provenance-preserving edit: "+result.Message+" / "+result.RollbackFailureMessage);
+                var required=history.Steps.First(s=>s.Plan is not null).Plan!.Compilation?.EditTargets.Single();
+                if(semanticVersion==2)Program.Check(required is not null && required.ParameterSemanticId==parameter.SemanticId && required.Before==parameter.Value,"Actual edit target differs from accepted role");
+                var command=new GenericScalarCommand(owner,parameter.Key,parameter.Value,required?.After??(model=="shaft"?13:44),state.Revision,parameter.SemanticId);Log("request",command);var result=session.Edit(command);Log("edit",result);Program.Check(result.Succeeded && result.StateCommitted && result.Revision==2,"Provenance-preserving edit: "+result.Message+" / "+result.RollbackFailureMessage);
             }
             var current=session.CurrentGeneric;Log("package",current);
             var saved=ContractJson.Read<PlanningHistory>(current.Provenance!.Payload,_=>{}).Steps.First(s=>s.Plan is not null).Plan!.ReadResponse();
@@ -57,7 +60,7 @@ internal static partial class T4Tests
             var driver=current.State.Parameters.Single(p=>p.SemanticId==feature+(model=="shaft"?".radius."+binding.Element:".depth"));
             if(model=="shaft")FeatureOracle::T2Tests.Oracle(session.Context.Document,false,driver.Value,Log);else FeatureOracle::T3Tests.Oracle(session.Context.Document,driver.Value,true,Log);
             var record=ContractJson.Read<PlanningHistory>(current.Provenance!.Payload,_=>{});Program.Check(record.Version==1 && record.Steps.Count==current.State.Revision && current.Provenance.Kind=="construction_planning" && !File.Exists(session.Store.RecoveryPath),"Provenance/authority/marker association differs");
-            if(compiled)Program.Check(record.Steps[0].Plan!.Compilation is not null && record.Steps[0].Plan!.Request.SemanticDraftVersion==1,"Compiled provenance lost");
+            if(compiled)Program.Check(record.Steps[0].Plan!.Compilation is not null && record.Steps[0].Plan!.Request.SemanticDraftVersion==semanticVersion,"Compiled provenance lost");
             Log("result",new{passed=true,current.State.Revision,driver.Value,current.FormatVersion,historyEvents=record.Steps.Count,native=ManagedRevisionStore.Hash(session.Store.WorkingPath),source=current.Provenance.Kind});
         }
         catch(Exception e){Log("failure",new{error=e.ToString()});throw;}
@@ -85,7 +88,7 @@ internal static partial class T4Tests
         Program.Check(sha=="60fbd4101e4c1f3c5ca129c7e5d44b1eadf28c50b6483e0259d06b4b716f9a8b" && connection.Application.GetOpenDocumentByName(manual) is null,"Manual original protection differs");originals.Add(new{path=manual,actual=sha});
         var historical=Path.Combine(root,"artifacts/milestone20/acceptance_v3/stop-audit-20261011T145238147.json");using var stop=JsonDocument.Parse(File.ReadAllText(historical));var count=0;
         foreach(var item in stop.RootElement.GetProperty("preservedEvidence").EnumerateArray()){var path=item.GetProperty("path").GetString()!;Program.Check(ManagedRevisionStore.Hash(path)==item.GetProperty("sha256").GetString(),"Stopped evidence changed: "+path);count++;}
-        var paths=new[]{Path.Combine(root,"artifacts/m20-preparation/T4"),Path.Combine(root,"artifacts/m20-preparation",stage)}.Distinct().Where(Directory.Exists);
+        var paths=new[]{"T4","T4B",stage}.Distinct().Select(s=>Path.Combine(root,"artifacts/m20-preparation",s)).Where(Directory.Exists);
         var markers=paths.SelectMany(p=>Directory.EnumerateFiles(p,"recovery*.json",SearchOption.AllDirectories)).ToArray();
         var isolated=new System.Collections.Generic.List<object>();
         foreach(var path in markers)
@@ -98,7 +101,7 @@ internal static partial class T4Tests
             isolated.Add(disposition);
         }
         Program.Write(Path.Combine(root,"artifacts/m20-preparation",stage,run,"native-audit.json"),new{utc=DateTime.UtcNow,resource,documents=NativeResourceGuard.DocumentTitles(connection.Application),budget=budget.Snapshot,originals,preservedHistoricalFiles=count,isolatedInitialFailures=isolated,unresolvedAuthoritativeMarkers=0,source=Program.SourceHashes(root),binaries=Binaries(),
-            plan=new{parts=2,expectedOpens=10,slots=new[]{"shaft.create:2","bracket.create:2","shaft.cold_edit:2","bracket.cold_edit:2","shaft.final_cold_read:1","bracket.final_cold_read:1"},oneOwnedPartAtATime=true,noModelCalls=true,formalM20=false}});
+            plan=new{parts=stage=="T4C"?1:2,expectedOpens=stage=="T4C"?7:10,slots=stage=="T4C"?new[]{"shaft.real.create:2","shaft.real.edit:2","shaft.real.read:1","legacy_v1.shaft.read:1","legacy_v1.bracket.read:1"}:new[]{"shaft.create:2","bracket.create:2","shaft.cold_edit:2","bracket.cold_edit:2","shaft.final_cold_read:1","bracket.final_cold_read:1"},oneOwnedPartAtATime=true,noModelCalls=true,formalM20=false}});
         return 0;
     }
     private static object[] Binaries()=>Directory.EnumerateFiles(AppContext.BaseDirectory,"CadHarness*.dll").OrderBy(p=>p).Select(p=>(object)new{path=p,sha256=ManagedRevisionStore.Hash(p)}).ToArray();

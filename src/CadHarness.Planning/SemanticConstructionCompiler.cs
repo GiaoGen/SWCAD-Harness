@@ -3,13 +3,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using CadHarness.Ir;
 using CadHarness.Ir.V03;
 
 namespace CadHarness.Planning;
 
 public sealed record EditabilityRequirement(string Id,string SourceKey,ParameterKey Parameter,double TestValue,bool Independent,
-    string? AnchorSourceKey,IReadOnlyList<string> PreservedSources);
+    string? AnchorSourceKey,IReadOnlyList<string> PreservedSources)
+{
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public PrincipalAxis? SweepAxis {get;init;}
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public Direction? SweepDirection {get;init;}
+}
 public sealed record DeclaredRadialDependency(string SourceKey,string TargetKey,string OffsetKey);
 public enum SemanticProfileKind { Rectangle,Circle,Capsule,RadialSection }
 public enum SemanticPlane { Xy,Xz,Yz }
@@ -28,7 +33,11 @@ public sealed record SemanticConstructionNode(string Id,ConstructionKind Kind,Se
 public sealed record SemanticConstructionDraft(int Version,PlanOutcome Outcome,IReadOnlyList<SemanticConstructionNode> Nodes,
     IReadOnlyList<string> Questions,string? Reason);
 public sealed record CompiledEditTarget(string RequirementId,string Owner,string ParameterSemanticId,ParameterKey Parameter,double Before,double After);
-public sealed record ConstructionCompilation(string Version,SemanticConstructionDraft Draft,IReadOnlyList<CompiledEditTarget> EditTargets);
+public sealed record ConstructionCompilation(string Version,SemanticConstructionDraft? Draft,IReadOnlyList<CompiledEditTarget> EditTargets)
+{
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public SemanticConstructionDraftV2? DraftV2 {get;init;}
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] public RadialExpansionMap? SourceMap {get;init;}
+}
 public sealed record SemanticCompilationResult(ConstructionPlanResponse Response,ConstructionCompilation Evidence);
 
 // This lowerer owns representation, not part design. All values refer to the
@@ -47,6 +56,7 @@ public static class SemanticConstructionCompiler
             ContractValidation.Require(ContractValidation.Id(e.Id) && Source(e.SourceKey) && e.Parameter is ParameterKey.RevolveRadius or ParameterKey.AdditiveBossDepth or ParameterKey.CutDepth &&
                 e.Independent && double.IsFinite(e.TestValue) && e.TestValue>0 && e.TestValue!=values[e.SourceKey].Value &&
                 (e.AnchorSourceKey is null || Source(e.AnchorSourceKey)) && e.PreservedSources.Count<=128 && e.PreservedSources.All(Source),"Invalid or unqualified editability role.");
+            ContractValidation.Require(e.SweepAxis is null?e.SweepDirection is null:e.Parameter!=ParameterKey.RevolveRadius && Enum.IsDefined(e.SweepAxis.Value) && e.SweepDirection is not null && Enum.IsDefined(e.SweepDirection.Value),"Invalid editable sweep layout role.");
         }
         var relations=q.DesignDependencies??Array.Empty<DeclaredRadialDependency>();
         ContractValidation.Require(relations.Count<=24,"Declared dependency bound exceeded.");ContractValidation.Unique(relations.Select(r=>r.TargetKey),"declared derived target");
@@ -71,6 +81,11 @@ public static class SemanticConstructionCompiler
     public static SemanticCompilationResult Compile(ConstructionPlanRequest request,SemanticConstructionDraft draft)
     {
         ContractValidation.Require(request.SemanticDraftVersion==1,"Semantic draft requires explicit request version.");ValidateDraft(draft);
+        return CompileExpanded(request,draft);
+    }
+    internal static SemanticCompilationResult CompileExpanded(ConstructionPlanRequest request,SemanticConstructionDraft draft)
+    {
+        ValidateDraft(draft);
         var facts=ConstructionRequirements.Normalize(request);
         ContractValidation.Require(draft.Outcome==PlanOutcome.Planned,"Only a planned draft can be lowered.");
         var builder=new Builder(request,facts);var response=builder.Build(draft);
@@ -81,8 +96,10 @@ public static class SemanticConstructionCompiler
     {
         ContractValidation.Require((request.SemanticDraftVersion is not null)==(compilation is not null),"Planning representation tag differs.");
         if(compilation is null){VerifyEditability(request,response,null);return;}
+        if(request.SemanticDraftVersion==2){SemanticConstructionV2.VerifyCompilation(request,response,compilation);return;}
         ContractValidation.Require(compilation.Version==Version,"Compiler version changed; fresh plan required.");
-        var actual=Compile(request,compilation.Draft);
+        ContractValidation.Require(compilation.Draft is not null && compilation.DraftV2 is null && compilation.SourceMap is null,"Invalid v1 compilation envelope.");
+        var actual=Compile(request,compilation.Draft!);
         ContractValidation.Require(ContractJson.Write(actual.Response,ConstructionRequirements.ValidateResponse)==ContractJson.Write(response,ConstructionRequirements.ValidateResponse) &&
             JsonSerializer.Serialize(actual.Evidence.EditTargets)==JsonSerializer.Serialize(compilation.EditTargets),"Compiled program/source map/edit roles differ from accepted draft.");
     }
@@ -119,6 +136,12 @@ public static class SemanticConstructionCompiler
             {
                 owner=program.Operations.Single(o=>o.SemanticId==binding.Target);
                 ContractValidation.Require(owner.Kind==(role.Parameter==ParameterKey.AdditiveBossDepth?ConstructionKind.CreateAdditiveBoss:ConstructionKind.CreateExtrudedCut),"Required depth has wrong qualified owner.");
+                if(role.SweepAxis is { } axis)
+                {
+                    var placement=program.Operations.Single(o=>o.SemanticId+".profile"==owner.Profile!.SemanticId).Placement!;
+                    var positive=axis switch{PrincipalAxis.X=>new Vector3(1,0,0),PrincipalAxis.Y=>new Vector3(0,1,0),_=>new Vector3(0,0,1)};
+                    ContractValidation.Require(placement.Frame.ZAxis==positive && owner.Direction==role.SweepDirection,"EDIT_SWEEP_LAYOUT: required depth has wrong world axis/direction: "+role.Id);
+                }
                 edited=program with {Operations=program.Operations.Select(o=>o.SemanticId==owner.SemanticId?o with {Depth=new(role.TestValue)}:o).ToArray()};identity=owner.SemanticId+".depth";
                 ContractValidation.Require(!role.PreservedSources.Contains(role.SourceKey),"Editable dimension cannot also be preserved.");
             }
@@ -256,7 +279,11 @@ public static class SemanticConstructionCompiler
     }
     public static string ResponseSchema(ConstructionPlanRequest request,IConstructionPlanningRuntime runtime)
     {
-        var root=JsonNode.Parse(ContractJson.Schema<SemanticConstructionDraft>())!.AsObject();root.Remove("$comment");root.Remove("$id");root.Remove("$schema");root["properties"]!["version"]!["enum"]=new JsonArray(1);
+        return ShapeSchema(JsonNode.Parse(ContractJson.Schema<SemanticConstructionDraft>())!.AsObject(),request,runtime,1);
+    }
+    internal static string ShapeSchema(JsonObject root,ConstructionPlanRequest request,IConstructionPlanningRuntime runtime,int version)
+    {
+        root.Remove("$comment");root.Remove("$id");root.Remove("$schema");root["properties"]!["version"]!["enum"]=new JsonArray(version);
         var node=root["properties"]!["nodes"]!["items"]!;var variants=new JsonArray();
         foreach(var kind in runtime.ExecutableKinds.Where(k=>k is ConstructionKind.CreateExtrude or ConstructionKind.CreateRevolvedBoss or ConstructionKind.CreateAdditiveBoss or ConstructionKind.CreateExtrudedCut or ConstructionKind.ApplyFillet))
         {
@@ -286,10 +313,11 @@ public static class SemanticConstructionCompiler
             {
                 if(o["properties"] is JsonObject properties)foreach(var pair in properties.ToArray())
                 {
-                    var name=pair.Key;var source=name is "originX" or "originY" or "originZ" or "centerX" or "centerY" or "width" or "height" or "diameter" or "length" or "start" or "end" or "radius" or "depth" or "sourceKey" or "targetKey" or "offsetKey" or "angle";
+                    var name=pair.Key;var source=name is "originX" or "originY" or "originZ" or "centerX" or "centerY" or "width" or "height" or "diameter" or "length" or "start" or "end" or "radius" or "depth" or "sourceKey" or "targetKey" or "offsetKey" or "angle" or "hostRadius" or "floorRadius";
                     if(source && pair.Value is JsonObject value){var strings=value["type"]?.ToString()=="string"?value:value["anyOf"] is JsonArray array?array.OfType<JsonObject>().SingleOrDefault(x=>x["type"]?.ToString()=="string"):null;if(strings is not null)strings["enum"]=new JsonArray((name=="angle"?degrees:mm).Select(s=>(JsonNode?)JsonValue.Create(s)).ToArray());}
                 }
                 if(o["properties"] is JsonObject fields && fields["outer"] is not null){fields["outer"]!["minItems"]=1;fields["outer"]!["maxItems"]=24;fields["inner"]!["minItems"]=1;fields["inner"]!["maxItems"]=24;fields["dependencies"]!["maxItems"]=24;}
+                if(o["properties"] is JsonObject radial && radial["baseOuter"] is not null){radial["baseOuter"]!["minItems"]=1;radial["baseOuter"]!["maxItems"]=24;radial["baseInner"]!["minItems"]=1;radial["baseInner"]!["maxItems"]=24;radial["externalRecesses"]!["maxItems"]=12;radial["dependencies"]!["maxItems"]=24;}
                 foreach(var child in o.ToArray())Visit(child.Value);
             }
             else if(n is JsonArray a)foreach(var child in a)Visit(child);
@@ -297,15 +325,20 @@ public static class SemanticConstructionCompiler
         Visit(root);var json=root.ToJsonString();ProviderSchemaCompatibility.RequireCompatible(json);return json;
     }
     public static string Instructions(ConstructionPlanRequest request,IConstructionPlanningRuntime runtime)
+        =>InstructionsCore(request,runtime,1);
+    internal static string InstructionsCore(ConstructionPlanRequest request,IConstructionPlanningRuntime runtime,int version)
     {
-        return "Produce ONE complete version=1 semantic construction plan. No CAD execution, API calls, code, expressions or retries. " +
+        return "Produce ONE complete version="+version+" semantic construction plan. No CAD execution, API calls, code, expressions or retries. " +
             "Use only the qualified kinds in schema. Values are accepted source keys, never numbers. Select the geometry composition and operation order; the compiler only expands primitives. " +
             "Each node has ONE unique id. host/edge.host reference an earlier solid node id, not native names, .body or .profile strings. " +
+            "For a new model the FIRST solid is exactly create_extrude (prismatic stock) or create_revolved_boss, host=null. create_additive_boss MERGES with an ALREADY EXISTING earlier solid; never use it for the root or make a node host itself. " +
+            "A revolve rotates about its placement LOCAL X, not the plane normal. Unrotated xy and xz placements have world-X rotation axes; unrotated yz has a world-Y rotation axis. " +
             "planned: nodes nonempty, questions=[], reason=null. needs_clarification: nodes=[], questions nonempty, reason=null, ONLY for unresolved critical user inputs. unsupported: nodes=[],questions=[],reason nonempty. " +
             "Placement origin is WORLD coordinates. Plane chooses xy/xz/yz normal +Z/+Y/+X; angle rotates within its canonical right-handed basis. Off-plane origins are lowered to tracked datums. " +
             "Profiles are LOCAL to placement: rectangle is center+width/height; circle is center+diameter; capsule is center+width/overall length along LOCAL X. World-Y capsules on xy need the given 90-degree angle. " +
-            "radial_section outer/inner list ordered contiguous axial intervals. Radius=null is the zero inner baseline only. All steps and radial notches belong in this one section; split intervals where a radius changes. No later cuts on a revolve. " +
-            "Outer is the external material envelope; an external annular groove reduces OUTER radius over its given span. Inner is an internal bore/void boundary; a solid shaft has null inner radius throughout. Do not exchange an external notch for an internal cavity. " +
+            (version==1?"radial_section outer/inner list ordered contiguous axial intervals. Radius=null is the zero inner baseline only. All steps and radial notches belong in this one section; split intervals where a radius changes. No later cuts on a revolve. ":
+                "radial_section baseOuter/baseInner list ordered contiguous BASE axial intervals; they EXCLUDE recess modifications. externalRecesses separately declares each external boundary modifier; the compiler owns interval splitting. Radius=null is the zero inner baseline only. No later cuts on a revolve. ")+
+            "Outer is the external material envelope; an external annular groove reduces external radius, never the internal bore boundary. A solid shaft has null inner radius throughout. Do not exchange an external notch for an internal cavity. " +
             "Use only explicitly declared design dependencies, target=source-offset. Independent Given radii must not be linked because of numeric differences. Copy each relevant declared dependency exactly; do not invent any. " +
             "Every critical/Given input must fund geometry through the disclosed value rules. Required editable sources must be independent drivers of the specified native kind, not fixed sketch coordinates. " +
             "Additive depth editing requires choosing the extrusion axis/section so that the required source is depth. Other dimensions/relations listed as preserved must not move. " +
@@ -321,8 +354,10 @@ public static class SemanticConstructionCompiler
         // Direct IR reference syntax must not contradict the semantic boundary.
         var capability=JsonNode.Parse(runtime.CapabilityJson)!.AsObject();
         capability.Remove("outputRules");capability.Remove("featureRules");
+        capability["operations"]=new JsonArray(runtime.ExecutableKinds.Where(k=>k is ConstructionKind.CreateExtrude or ConstructionKind.CreateRevolvedBoss or ConstructionKind.CreateAdditiveBoss or ConstructionKind.CreateExtrudedCut or ConstructionKind.ApplyFillet).Select(k=>(JsonNode?)JsonValue.Create(JsonNamingPolicy.SnakeCaseLower.ConvertName(k.ToString()))).ToArray());
         capability["semanticReferenceRules"]=new JsonArray(
             "host and edge.host are exact earlier node IDs. Do not append .body, .profile or other IR suffixes; the compiler owns typed outputs.",
+            "The first solid is create_extrude or create_revolved_boss with host=null. Additive bosses require an already existing earlier host. Sketches/datums are compiler output, not semantic nodes.",
             "A revolve is the entire rotational history. All steps, inner bores and radial notches must appear in its outer/inner intervals; no later solid nodes.",
             "Prismatic additions precede cuts. Each host is the most recent solid node to preserve the full material history; a fillet is terminal.",
             "Fillet edge.host is the positive extrusion node owning the edge, not a body output. Axis/sides remain root-local.");

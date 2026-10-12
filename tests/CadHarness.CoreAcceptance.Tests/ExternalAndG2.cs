@@ -25,7 +25,7 @@ internal static partial class Program
     };
     private static void External(FreezeRecord freeze,Slot slot,SolidWorksConnection connection,Lifecycle lifecycle,Action<string,object> journal)
     {
-        var id=slot.Task;var root=Path.Combine(Output,"packages",id);
+        var id=slot.Task;var root=freeze.CompletedExternal?.Task==id?freeze.CompletedExternal.Package:Path.Combine(Output,"packages",id);
         if(slot.Mode=="readonly")
         {
             using var registry=JsonDocument.Parse(File.ReadAllText(Path.Combine(Root,"artifacts/fixture-factory/audits/final-v1/fixture-registry.json")));
@@ -40,7 +40,7 @@ internal static partial class Program
         var original=freeze.External.Single(i=>i.Id==id);var spec=original;
         if(slot.Mode=="external-cold")
         {
-            spec=Read<OracleInput>(Path.Combine(Output,"packages",id,"expected.json"));
+            spec=Read<OracleInput>(Path.Combine(root,"expected.json"));
             var result=ExternalPartSession.Open(connection,root,Path.Combine(root,"working","CADHarnessManagedPart.SLDPRT"),lifecycle);
             journal("external-cold-admission",new{result.Status,result.FailureCode,result.Message});
             Check(result.Session is not null,"External cold reopen failed");using var cold=result.Session!;

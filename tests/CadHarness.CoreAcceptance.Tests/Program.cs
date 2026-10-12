@@ -24,11 +24,19 @@ internal sealed record OracleInput(string Id,string Provenance,FrozenFile Source
 internal sealed record Slot(string Id,string Mode,string Task,string Source,int MaximumParts,int MaximumOpens);
 internal sealed record FreezeRecord(string Baseline,string Provider,string RequestedModel,int MaximumOutputTokens,int TimeoutSeconds,
     string Capability,string ResponseSchema,TaskDefinition[] Tasks,Slot[] Slots,FrozenFile[] Files,OracleInput[] External,
-    string[] Deferred,string Authorization,DateTime Utc);
+    string[] Deferred,string Authorization,DateTime Utc)
+{
+    public Continuation? Continuation {get;init;}
+    public CoreEvidence[] ReusedCore {get;init;}=Array.Empty<CoreEvidence>();
+    public CompletedExternal? CompletedExternal {get;init;}
+}
+internal sealed record Continuation(string Task,string Package,FrozenFile InitialNative,FrozenFile InitialPointer,FrozenFile PriorCreationEvidence);
+internal sealed record CoreEvidence(string Slot,FrozenFile Native,FrozenFile Cold,FrozenFile Read);
+internal sealed record CompletedExternal(string Task,string Package,FrozenFile PriorResult,FrozenFile Expected,FrozenFile Pointer,FrozenFile Native);
 
 internal static partial class Program
 {
-    internal static readonly JsonSerializerOptions Json=new(){PropertyNamingPolicy=JsonNamingPolicy.CamelCase,WriteIndented=true,
+    internal static readonly JsonSerializerOptions Json=new(){PropertyNamingPolicy=JsonNamingPolicy.CamelCase,PropertyNameCaseInsensitive=true,WriteIndented=true,
         Converters={new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)}};
     internal static void Check(bool condition,string message){if(!condition)throw new InvalidOperationException(message);}
     internal static void Write(string path,object data)
@@ -40,6 +48,7 @@ internal static partial class Program
     internal static T Read<T>(string path)=>JsonSerializer.Deserialize<T>(File.ReadAllText(path),Json)??throw new InvalidDataException(path);
     internal static FrozenFile Identity(string path)=>new(Path.GetFullPath(path),ManagedRevisionStore.Hash(path),new FileInfo(path).Length);
     private static string Root="",Output="";
+    private static bool Development;
     [STAThread]
     private static int Main(string[] args)
     {
@@ -47,12 +56,18 @@ internal static partial class Program
         {
             Root=Path.GetFullPath(args[0]);
             if(args[1]=="--pure")return Pure();
-            Check(ContractValidation.Id(args[2]),"Invalid run ID");Output=Path.Combine(Root,"artifacts/milestone20",args[2]);
+            Development=args.Contains("--development");
+            Check(ContractValidation.Id(args[2]),"Invalid run ID");Output=Path.Combine(Root,Development?"artifacts/m20-preparation/T5":"artifacts/milestone20",args[2]);
+            if(args[1]=="--audit")return PreparationAudit();
+            if(args[1]=="--verify-package")return VerifyExistingPackage(args[3],args[4]);
             if(args[1]=="--ownership-audit")return OwnershipAudit(args.Length>3?args[3]:"inspect");
             if(args[1]=="--freeze")return Freeze();
-            var freeze=Read<FreezeRecord>(Path.Combine(Output,"freeze.json"));VerifyFreeze(freeze);
+            var freeze=Read<FreezeRecord>(Path.Combine(Output,"freeze.json"));
+            if(args[1]=="--summarize")return Summarize(freeze);
+            VerifyFreeze(freeze);
             var slot=freeze.Slots.Single(s=>s.Id==args[3]);
             if(args[1]=="--cold")Environment.SetEnvironmentVariable("CAD_HARNESS_M20_PHASE","cold");
+            if(args[1]=="--read")Environment.SetEnvironmentVariable("CAD_HARNESS_M20_PHASE","read");
             var marker=Path.Combine(Output,"slots",slot.Id,args[1].TrimStart('-')+"-started.json");
             Write(marker,new{utc=DateTime.UtcNow,controller=Environment.ProcessId,slot});
             if(args[1]=="--plan")return Plan(freeze,slot);
@@ -60,43 +75,42 @@ internal static partial class Program
         }
         catch(Exception e){Console.Error.WriteLine(e);return 1;}
     }
-    private static TaskDefinition[] Definitions()
-    {
-        using var raw=JsonDocument.Parse(File.ReadAllText(Path.Combine(Root,"tests/CadHarness.V03Contracts.Tests/Fixtures/acceptance-tasks.json")));
-        return Tasks.Load(raw.RootElement);
-    }
+    private static TaskDefinition[] Definitions()=>Tasks.Load(Root);
     private static int Pure()
     {
         var tests=new List<object>();var definitions=Definitions();
         foreach(var task in definitions)
         {
             _=ConstructionRequirements.Normalize(task.Request);
-            if(task.Program is not null)
-            {
-                var expected=ConstructionPreflight.EvaluateGeometry(task.Program);
-                Check(Math.Abs(expected.VolumeMm3-task.BeforeVolume)<1e-6,"Frozen volume mismatch: "+task.Id);
-                if(task.Family=="C4")
-                {
-                    var after=task.Program with{Operations=task.Program.Operations.Select(o=>o.SemanticId==task.EditTarget?o with{Depth=new(task.NewValue)}:o).ToArray()};
-                    Check(Math.Abs(ConstructionPreflight.EvaluateGeometry(after).VolumeMm3-task.AfterVolume)<1e-6,"Frozen edited volume mismatch");
-                }
-            }
-            tests.Add(new{task.Id,passed=true,task.CapabilityGap});
+            var expected=ConstructionPreflight.EvaluateGeometry(task.Program);
+            Check(Math.Abs(expected.VolumeMm3-Tasks.Geometry(task,0).Volume)<1e-6,"Frozen volume mismatch: "+task.Id);
+            TestTask(task,tests);
         }
         Check(!GenericFeatureCapabilities.IsQualified(ConstructionKind.CreateRevolvedBoss,ParameterKey.RevolveAxialSpan),"Unexpected broad native edit qualification");
         Check(ProviderSchemaCompatibility.Audit(ConstructionPlanner.ResponseSchema(SolidWorksConstructionPlanningRuntime.ForNewModel())).Count==0,"Provider schema invalid");
-        var path=Path.Combine(Root,"artifacts/milestone20/pure",DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff"),"result.json");
+        PureAggregation(tests);
+        var path=Path.Combine(Root,"artifacts/m20-preparation/T5/pure",DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff"),"result.json");
         Write(path,new{passed=true,tests,providerSchemaCompatible=true,nativeCalls=0});Console.WriteLine(path);return 0;
     }
     private static int Freeze()
     {
+        Check(Development,"Formal freeze is deferred until an independent maintainer freezes fresh held-out inputs. T5 does not authorize formal M20.");
         Check(!Directory.Exists(Output),"Never overwrite a frozen run");Directory.CreateDirectory(Output);
         var tasks=Definitions();var slots=new List<Slot>();
-        foreach(var t in tasks.Where(t=>!t.HeldOut))slots.Add(new(t.Id+"-deterministic","deterministic",t.Id,"typed_fixture",t.Program is null?0:1,t.Program is null?0:1));
-        foreach(var t in tasks.Where(t=>!t.HeldOut))for(var i=1;i<=3;i++)slots.Add(new(t.Id+"-real-"+i,"real",t.Id,"live_provider",1,1));
-        slots.Add(new("held-out-composition","deterministic","C4-held-out","typed_fixture",1,1));
-        foreach(var id in new[]{"missing-shaft","missing-fit"})slots.Add(new(id,"negative-planning",id,"live_provider",0,0));
-        foreach(var id in new[]{"core","manual"}){slots.Add(new(id+"-external","external",id,"external_public",0,12));slots.Add(new(id+"-external-cold","external-cold",id,"external_public",0,1));}
+        Continuation? continuation=null;
+        var continuationPath=Environment.GetEnvironmentVariable("CAD_HARNESS_T5_CONTINUATION");
+        if(!string.IsNullOrWhiteSpace(continuationPath))
+        {
+            var package=Path.GetFullPath(continuationPath);Check(package.StartsWith(Path.GetFullPath(Path.Combine(Root,"artifacts/m20-preparation/T5"))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"Continuation outside T5 owned packages");
+            using var store=new ManagedRevisionStore(package,new GenericAuditOnly());var current=store.ReadCurrent();
+            Check(current.Manifest.Revision==1&&!File.Exists(store.RecoveryPath),"Continuation requires a proven R1 without pending recovery");
+            var evidence=Directory.GetFiles(Path.Combine(Path.GetDirectoryName(package)!,"steps/native"),"*-public-create.json").Single();
+            var previous=Read<JsonElement>(evidence).GetProperty("data");Check(previous.GetProperty("succeeded").GetBoolean()&&previous.GetProperty("stateCommitted").GetBoolean()&&previous.GetProperty("revision").GetInt64()==1,"Cannot continue failed creation");
+            continuation=new("C1",package,Identity(store.WorkingPath),Identity(store.PointerPath),Identity(evidence));
+        }
+        var reused=LoadCoreReuse();var completed=LoadCompletedExternal();
+        foreach(var t in tasks){var reuse=reused.Any(r=>r.Slot==t.Id+"-deterministic");slots.Add(new(t.Id+"-deterministic","deterministic",t.Id,reuse?"reused_valid_development_chain":t.Id==continuation?.Task?"owned_R1_continuation":"typed_fixture",reuse||t.Id==continuation?.Task?0:1,reuse?0:6));}
+        foreach(var id in new[]{"core","manual"}){slots.Add(new(id+"-external","external",id,id==completed?.Task?"preserved_successful_public_steps":"external_public",0,id==completed?.Task?0:12));slots.Add(new(id+"-external-cold","external-cold",id,"external_public",0,1));}
         slots.Add(new("equation-readonly","readonly","equation","external_public",0,1));
         slots.Add(new("unknown-readonly","readonly","unknown","external_public",0,1));
         slots.Add(new("G2-regression","g2","G2","production_v02",1,3));slots.Add(new("G2-cold","g2-cold","G2","production_v02",0,1));
@@ -118,16 +132,27 @@ internal static partial class Program
             .Concat(Directory.GetFiles(Path.GetDirectoryName(typeof(Program).Assembly.Location)!,"*"))
             .Concat(Directory.GetFiles(Path.Combine(Root,"schemas"),"*.json"))
             .Concat(new[]{Path.Combine(Root,"SWCAD_Harness_v0.3_PRD.md"),Path.Combine(Root,"tests/CadHarness.V03Contracts.Tests/Fixtures/acceptance-tasks.json"),
-                Path.Combine(Root,"tests/CadHarness.ExternalEditing.Tests/NativeEditOracle.cs"),Path.Combine(Root,"scripts/test-milestone20.ps1"),
+                Path.Combine(Root,"tests/CadHarness.ExternalEditing.Tests/NativeEditOracle.cs"),Path.Combine(Root,"scripts/test-milestone20.ps1"),Path.Combine(Root,"scripts/test-m20-preparation-T5.ps1"),
                 Path.Combine(Root,"tests/CadHarness.SolidWorks.Tests/NativeTestBudget.cs"),Path.Combine(Root,"tests/CadHarness.SolidWorks.Tests/NativeResourceGuard.cs"),Path.Combine(Root,"tests/CadHarness.SolidWorks.Tests/TestPartScope.cs"),
                 Path.Combine(Root,"tests/CadHarness.Relations.Tests/Fixtures/rect2x2.json")}).Concat(prompts)
-            .Concat(inputs.Select(i=>i.Source.Path)).Concat(ProtectedRegistryFiles()).Distinct().Select(Identity).ToArray();
+            .Concat(inputs.Select(i=>i.Source.Path)).Concat(ProtectedRegistryFiles())
+            .Concat(new[]{"T4Cases.cs","T4BCases.cs","T4CCases.cs"}.Select(p=>Path.Combine(Root,"tests/CadHarness.ConstructionPlanning.Tests",p)))
+            .Concat(reused.SelectMany(r=>new[]{r.Native.Path,r.Cold.Path,r.Read.Path}))
+            .Concat(completed is null?Array.Empty<string>():Directory.GetFiles(Path.Combine(Path.GetDirectoryName(completed.PriorResult.Path)!,"steps/native"),"*.json").Concat(new[]{completed.PriorResult.Path,completed.Expected.Path,completed.Pointer.Path,completed.Native.Path}))
+            .Distinct().Select(Identity).ToArray();
         var runtime=SolidWorksConstructionPlanningRuntime.ForNewModel();
-        Write(Path.Combine(Output,"freeze.json"),new FreezeRecord("b25467d","https://api.deepseek.com/responses","deepseek-chat",8192,120,
+        Write(Path.Combine(Output,"freeze.json"),new FreezeRecord(GitHead(),"https://api.deepseek.com/responses","deepseek-chat",8192,120,
             runtime.CapabilityJson,ConstructionPlanner.ResponseSchema(runtime),tasks,slots.ToArray(),allFiles,inputs,
-            new[]{"M18","M19","C5","C6"},"2026-10-11 direct user authorization: unlimited M20 native budget; lifecycle and attempt accounting remain mandatory.",DateTime.UtcNow));
+            new[]{"M18","M19","C5","C6","fresh-held-out","formal-M20"},"T5 preparation only; user authorized unlimited preparation attempts with finite evidence-driven execution. Never resume stopped M20.",DateTime.UtcNow){Continuation=continuation,ReusedCore=reused,CompletedExternal=completed});
         Write(Path.Combine(Output,"freeze-seal.json"),Identity(Path.Combine(Output,"freeze.json")));
+        if(completed is not null)ReconcileCompletedExternal(completed);
         Console.WriteLine($"Frozen {slots.Count} slots; maximum {slots.Sum(s=>s.MaximumParts)} Parts and {slots.Sum(s=>s.MaximumOpens)} opens, including explicit cold workers. No measured attempt yet.");return 0;
+    }
+    private static string GitHead()
+    {
+        var info=new ProcessStartInfo("git"){WorkingDirectory=Root,RedirectStandardOutput=true,UseShellExecute=false};
+        foreach(var s in new[]{"-c","safe.directory="+Root.Replace('\\','/'),"rev-parse","HEAD"})info.ArgumentList.Add(s);
+        using var p=Process.Start(info)!;var head=p.StandardOutput.ReadToEnd().Trim();p.WaitForExit();Check(p.ExitCode==0,"Cannot record actual HEAD");return head;
     }
     private static IEnumerable<string> ProtectedRegistryFiles()
     {

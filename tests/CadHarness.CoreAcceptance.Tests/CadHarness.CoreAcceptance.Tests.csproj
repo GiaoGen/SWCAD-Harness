@@ -9,6 +9,9 @@
     <Compile Include="../CadHarness.SolidWorks.Tests/NativeResourceGuard.cs" Link="NativeResourceGuard.cs" />
     <Compile Include="../CadHarness.SolidWorks.Tests/TestPartScope.cs" Link="TestPartScope.cs" />
     <Compile Include="../CadHarness.ExternalEditing.Tests/NativeEditOracle.cs" Link="NativeEditOracle.cs" />
+    <Compile Include="../CadHarness.ConstructionPlanning.Tests/T4Cases.cs" Link="T4Cases.cs" />
+    <Compile Include="../CadHarness.ConstructionPlanning.Tests/T4BCases.cs" Link="T4BCases.cs" />
+    <Compile Include="../CadHarness.ConstructionPlanning.Tests/T4CCases.cs" Link="T4CCases.cs" />
   </ItemGroup>
   <Import Project="../../scripts/solidworks-interop.props" />
 </Project>
