@@ -36,6 +36,7 @@ internal static partial class Program
     }
     private static int Summarize(FreezeRecord freeze)
     {
+        if(freeze.Formal is not null)return SummarizeFormal(freeze);
         var rows=new List<object>();var statuses=new List<string>();var successTimes=new List<double>();var realByFamily=new Dictionary<string,int>();var deterministic=0;
         foreach(var slot in freeze.Slots.Where(s=>s.Mode is not "external-cold" and not "g2-cold"))
         {

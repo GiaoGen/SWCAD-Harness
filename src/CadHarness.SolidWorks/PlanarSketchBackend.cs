@@ -166,7 +166,7 @@ public sealed partial class SolidWorksExecutionContext
     private IFeature ResolveSketchFeature(PlanarSketchBinding binding) => PersistentReferenceAdapter.Resolve<IFeature>(this, binding.Profile).NativeObject ?? throw new StateException("STALE_REFERENCE", "Sketch profile is stale.");
     internal void RebuildSketch()
     {
-        if (!Document.ForceRebuild3(false) || Document.Extension.NeedsRebuild2 != 0) throw new StateException("FEATURE_REBUILD_FAILED", "Planar rebuild failed.");
+        if (!ExecutionTelemetry.Rebuild(() => Document.ForceRebuild3(false)) || Document.Extension.NeedsRebuild2 != 0) throw new StateException("FEATURE_REBUILD_FAILED", "Planar rebuild failed.");
     }
     private object ResolveSketchPlane(SpatialPlacement placement)
     {

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cad-harness:t5a:acceptance-package:1",
+  "title": "T5A bounded acceptance envelopes",
+  "$comment": "Envelope schema plus StrictRead, LoadFormal, production request normalization and independent descriptor validation are jointly normative. This does not authorize execution.",
+  "oneOf": [
+    { "$ref": "#/$defs/manifest" },
+    { "$ref": "#/$defs/package" },
+    { "$ref": "#/$defs/p0Task" },
+    { "$ref": "#/$defs/externalProtocol" },
+    { "$ref": "#/$defs/authorization" }
+  ],
+  "$defs": {
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},"bytes":{"type":"integer","minimum":0}}
+    },
+    "provider": {
+      "type":"object","additionalProperties":false,
+      "required":["endpoint","alias","format","temperature","maximumOutputTokens","timeoutSeconds","credentialEnvironment"],
+      "properties":{
+        "endpoint":{"const":"https://api.deepseek.com/responses"},"alias":{"const":"deepseek-chat"},"format":{"const":"json_schema"},
+        "temperature":{"const":0},"maximumOutputTokens":{"const":16384},"timeoutSeconds":{"const":180},"credentialEnvironment":{"const":"CAD_HARNESS_LLM_API_KEY"}
+      }
+    },
+    "request": {
+      "type":"object","additionalProperties":false,"required":["input","rules"],
+      "properties":{
+        "input":{"$ref":"v03-requirements.schema.json"},
+        "rules":{"type":"array","maxItems":128,"items":{"type":"object","additionalProperties":false,"required":["semanticKey","ruleId","inputKey"],"properties":{"semanticKey":{"type":"string"},"ruleId":{"type":"string"},"inputKey":{"type":["string","null"]},"inputs":{"type":"array","maxItems":16,"items":{"type":"string"}}}}},
+        "semanticDraftVersion":{"enum":[1,2]},"editabilityRequirements":{"type":"array","minItems":1,"maxItems":16},
+        "designDependencies":{"type":"array","maxItems":128},"geometryRequirements":{"type":"object"}
+      }
+    },
+    "assertion": {
+      "type":"object","additionalProperties":false,"required":["file","jsonPointer","expectedJson"],
+      "properties":{"file":{"$ref":"#/$defs/file"},"jsonPointer":{"type":"string","pattern":"^/"},"expectedJson":{"type":"string","minLength":1}}
+    },
+    "reuse": {
+      "type":"object","additionalProperties":false,"required":["requirement","compatibilityBasis","evidence","production","assertions","compatibilityFreeze"],
+      "properties":{
+        "requirement":{"enum":["defaults-two-native","native-fault-recovery","external-history-robustness"]},"compatibilityBasis":{"type":"string","minLength":1},
+        "evidence":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/file"}},"production":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/file"}},
+        "assertions":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/assertion"}},"compatibilityFreeze":{"$ref":"#/$defs/file"}
+      }
+    },
+    "negative": {
+      "type":"object","additionalProperties":false,"required":["id","request","expectedStatus","requiredQuestionFragments","failureCode"],
+      "properties":{"id":{"type":"string"},"request":{"$ref":"#/$defs/request"},"expectedStatus":{"const":"needs_clarification"},"requiredQuestionFragments":{"type":"array","minItems":1,"items":{"type":"string"}},"failureCode":{"type":["string","null"]}}
+    },
+    "manifest": {
+      "type":"object","additionalProperties":false,
+      "required":["version","runId","development","candidate","package","packageSeal","provider","externalRegression","negatives","regression","proposedParts","proposedOpens"],
+      "properties":{
+        "version":{"const":1},"runId":{"type":"string","pattern":"^[a-z][a-z0-9_]*$"},"development":{"type":"boolean"},
+        "candidate":{"$ref":"#/$defs/file"},"package":{"$ref":"#/$defs/file"},"packageSeal":{"$ref":"#/$defs/file"},"provider":{"$ref":"#/$defs/provider"},
+        "externalRegression":{"type":"array","minItems":2,"maxItems":2,"items":{"$ref":"#/$defs/externalOracle"}},
+        "negatives":{"type":"array","minItems":2,"maxItems":2,"items":{"$ref":"#/$defs/negative"}},"regression":{"type":"array","minItems":3,"maxItems":3,"items":{"$ref":"#/$defs/reuse"}},
+        "proposedParts":{"const":18},"proposedOpens":{"const":140}
+      }
+    },
+    "package": {
+      "type":"object","additionalProperties":false,"required":["version","id","development","maintainer","sealedUtc","untuned","oracleProvenance","candidate","p0","external"],
+      "properties":{
+        "version":{"const":1},"id":{"type":"string"},"development":{"type":"boolean"},"maintainer":{"type":"string","minLength":1},"sealedUtc":{"type":"string","format":"date-time"},
+        "untuned":{"const":true},"oracleProvenance":{"type":"string","minLength":1},"candidate":{"$ref":"#/$defs/file"},"p0":{"$ref":"#/$defs/file"},"external":{"$ref":"#/$defs/file"}
+      }
+    },
+    "capsule": {
+      "type":"object","additionalProperties":false,"required":["id","x","y","width","length","angle","depth"],
+      "properties":{"id":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number","exclusiveMinimum":0},"length":{"type":"number","exclusiveMinimum":0},"angle":{"type":"number"},"depth":{"type":"number","exclusiveMinimum":0}}
+    },
+    "capsuleGeometry": {
+      "type":"object","additionalProperties":false,"required":["width","height","thickness","slots"],
+      "properties":{"width":{"type":"number","exclusiveMinimum":0},"height":{"type":"number","exclusiveMinimum":0},"thickness":{"type":"number","exclusiveMinimum":0},"slots":{"type":"array","minItems":3,"maxItems":3,"items":{"$ref":"#/$defs/capsule"}}}
+    },
+    "p0Task": {
+      "type":"object","additionalProperties":false,"required":["id","family","intent","program","request","oldValue","newValue","coldValue","draftJson","expected"],
+      "properties":{
+        "id":{"type":"string"},"family":{"const":"C4"},"intent":{"type":"string","minLength":1},"program":{"type":"null"},"request":{"$ref":"#/$defs/request"},
+        "oldValue":{"type":"number","exclusiveMinimum":0},"newValue":{"type":"number","exclusiveMinimum":0},"coldValue":{"type":"number","exclusiveMinimum":0},"draftJson":{"const":""},
+        "expected":{"type":"array","minItems":3,"maxItems":3,"items":{"$ref":"#/$defs/capsuleGeometry"}}
+      }
+    },
+    "hole": {
+      "type":"object","additionalProperties":false,"required":["label","x","y","diameter"],
+      "properties":{"label":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"diameter":{"type":"number","exclusiveMinimum":0}}
+    },
+    "pattern": {
+      "type":"object","additionalProperties":false,"required":["label","seed","count","spacing"],
+      "properties":{"label":{"type":"string"},"seed":{"type":"string"},"count":{"type":"integer","minimum":2,"maximum":128},"spacing":{"type":"number","exclusiveMinimum":0}}
+    },
+    "externalOracle": {
+      "type":"object","additionalProperties":false,
+      "required":["id","provenance","source","configuration","width","height","depth","holes","pattern","references","factoryReady","blindDepth","blindX","blindY","blindDiameter","equationCount"],
+      "properties":{
+        "id":{"type":"string"},"provenance":{"type":"string","minLength":1},"source":{"$ref":"#/$defs/file"},"configuration":{"type":"string","minLength":1},
+        "width":{"type":"number","exclusiveMinimum":0},"height":{"type":"number","exclusiveMinimum":0},"depth":{"type":"number","exclusiveMinimum":0},
+        "holes":{"type":"array","minItems":3,"maxItems":128,"items":{"$ref":"#/$defs/hole"}},"pattern":{"$ref":"#/$defs/pattern"},"references":{"type":"object","additionalProperties":{"type":"string"}},
+        "factoryReady":{"type":["string","null"]},"blindDepth":{"type":"number"},"blindX":{"type":"number"},"blindY":{"type":"number"},"blindDiameter":{"type":"number"},"equationCount":{"type":"integer","minimum":0}
+      }
+    },
+    "edit": {
+      "type":"object","additionalProperties":false,"required":["label","parameter","oldValue","newValue"],
+      "properties":{"label":{"type":"string"},"parameter":{"enum":["extrusion_depth","hole_diameter","pattern_count","pattern_spacing"]},"oldValue":{"type":"number"},"newValue":{"type":"number","exclusiveMinimum":0}}
+    },
+    "action": {
+      "type":"object","additionalProperties":false,"required":["kind","edits"],
+      "properties":{"kind":{"enum":["scalar","batch"]},"edits":{"type":"array","minItems":1,"maxItems":4,"items":{"$ref":"#/$defs/edit"}}}
+    },
+    "externalProtocol": {
+      "type":"object","additionalProperties":false,"required":["initial","actions","expected","firstEditFault"],
+      "properties":{"initial":{"$ref":"#/$defs/externalOracle"},"actions":{"type":"array","minItems":2,"maxItems":8,"items":{"$ref":"#/$defs/action"}},"expected":{"type":"array","minItems":3,"maxItems":9,"items":{"$ref":"#/$defs/externalOracle"}},"firstEditFault":{"type":"boolean"}}
+    },
+    "limit": {
+      "type":"object","additionalProperties":false,"required":["parts","opens"],"properties":{"parts":{"type":"integer","minimum":0},"opens":{"type":"integer","minimum":0}}
+    },
+    "authorization": {
+      "type":"object","additionalProperties":false,"required":["version","runId","freeze","humanAuthorization","utc","executionAuthorized","approvedParts","approvedOpens","slots"],
+      "properties":{"version":{"const":1},"runId":{"type":"string"},"freeze":{"$ref":"#/$defs/file"},"humanAuthorization":{"type":"string","minLength":1},"utc":{"type":"string","format":"date-time"},"executionAuthorized":{"const":true},"approvedParts":{"type":"integer","minimum":18,"maximum":999},"approvedOpens":{"type":"integer","minimum":140,"maximum":9999},"slots":{"type":"object","additionalProperties":{"$ref":"#/$defs/limit"}}}
+    }
+  }
+}

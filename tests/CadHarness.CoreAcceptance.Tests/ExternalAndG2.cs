@@ -38,6 +38,7 @@ internal static partial class Program
             Check(result.Observation is not null,"Unsupported history lost its inspectable inventory");return;
         }
         var original=freeze.External.Single(i=>i.Id==id);var spec=original;
+        if(freeze.Formal is not null){ExternalFormal(freeze,slot,connection,lifecycle,journal);return;}
         if(slot.Mode=="external-cold")
         {
             spec=Read<OracleInput>(Path.Combine(root,"expected.json"));
@@ -95,13 +96,16 @@ internal static partial class Program
             G2Oracle(session.Context,11.25,session.Store.Load(),journal);
             Check(session.PlanningRuntime().Capabilities.ParameterEdits.Any(e=>e.Target=="plate"&&e.Parameter==EditableParameter.ExtrusionDepth),"G2 restored edit binding missing");return;
         }
-        var source=Path.Combine(Output,"G2-original");Directory.CreateDirectory(source);var part=Path.Combine(source,"G2.SLDPRT");
+        var source=IncrementalRun?Path.Combine(Root,"artifacts/milestone20/acceptance_t5b_v2/G2-original"):Path.Combine(Output,"G2-original");
+        if(!IncrementalRun)Directory.CreateDirectory(source);var part=Path.Combine(source,"G2.SLDPRT");
         var stateFile=Path.Combine(source,"state.json");var programFile=Path.Combine(source,"program.json");
         var parsed=new CadProgramJson().Parse(File.ReadAllText(Path.Combine(Root,"tests/CadHarness.Relations.Tests/Fixtures/rect2x2.json")));Check(parsed.IsValid,"G2 frozen construction invalid");
         {
-            var scope=new TestPartScope(connection.Application,budget);
+            var scope=IncrementalRun?null:new TestPartScope(connection.Application,budget);
+            if(scope is not null)
             try
             {
+                lifecycle.ReserveLegacyCreation();
                 var context=scope.Create(connection,connection.ResolvePartTemplate(Environment.GetEnvironmentVariable("CAD_HARNESS_PART_TEMPLATE")));
                 var creation=new RelationBackend().Create(context,parsed.Program!);journal("G2-construction",creation);Check(creation.Succeeded,"G2 build failed");
                 int errors=0,warnings=0;Check(context.Document.Extension.SaveAs(part,0,(int)swSaveAsOptions_e.swSaveAsOptions_Silent,null!,ref errors,ref warnings)&&errors==0&&warnings==0,"G2 source save failed");scope.RefreshOwnedTitle();
@@ -110,7 +114,9 @@ internal static partial class Program
             }
             finally{scope.Cleanup();Check(scope.Closed&&scope.OriginalActiveRestored&&scope.CleanupError is null,"G2 create cleanup failed");journal("G2-creation-ledger",budget.Snapshot);}
         }
-        var hashes=new[]{Identity(part),Identity(stateFile),Identity(programFile)};Write(Path.Combine(source,"originals.json"),hashes);
+        var hashes=new[]{Identity(part),Identity(stateFile),Identity(programFile)};
+        if(!IncrementalRun)Write(Path.Combine(source,"originals.json"),hashes);
+        else Check(Canonical(hashes)==Canonical(Read<FrozenFile[]>(Path.Combine(source,"originals.json"))),"Immutable legacy source drift");
         var migrated=ManagedPartSession.MigrateCopy(connection,root,part,stateFile,programFile,lifecycle);
         journal("G2-migration",new{migrated.Status,migrated.FailureCode,migrated.Message});Check(migrated.Session is not null,"G2 migration failed");using var active=migrated.Session!;
         var old=active.Store.Load();

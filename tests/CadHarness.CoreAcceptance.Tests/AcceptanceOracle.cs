@@ -13,6 +13,7 @@ internal static partial class Program
     private static void Oracle(IModelDoc2 doc,TaskDefinition task,GeometryPhase expected,Action<string,object> log)
     {
         if(task.Family=="C3"){BracketOracle(doc,expected.Value,true,log);return;}
+        if(task.Family=="C4"){CapsuleOracle(doc,task.Expected is { } phases?phases[(int)expected.Revision-1]:CoreCapsules(expected.Value),log);return;}
         var bodies=Items<IBody2>(((IPartDoc)doc).GetBodies2(0,false));Check(bodies.Length==1,"Oracle requires one body");var body=bodies.Single();
         var volume=((double[])body.GetMassProperties(1))[3]*1e9;var bounds=new double[6];
         for(var i=0;i<6;i++){var k=i%3;var s=i<3?-1:1;Check(body.GetExtremePoint(k==0?s:0,k==1?s:0,k==2?s:0,out var x,out var y,out var z),"Oracle extreme missing");bounds[i]=new[]{x,y,z}[k]*1000;}

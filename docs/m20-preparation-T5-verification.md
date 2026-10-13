@@ -63,3 +63,9 @@ T5累计 **5创建尝试/5 Part、47 opens、52 closes、0 owned**，包括两�
 生产源码与v4 native冻结仍一致；最终测试调度变化不改Handler/Native/Oracle/事务/持久化。源码与报告保留工作树，未主动commit/push，未覆盖接手的T4C差异。
 
 **停止位置：T5 PARTIAL / NOT_READY，开发验证DEVELOPMENT_PASS。** 需要独立维护者封存新P0与外部参数组合，并在正式前接入其明确任务/Oracle和新资源冻结安排；当前formal freeze有意fail-closed。没有新生产能力缺口、没有新生产资格开放，也没有开始正式M20。详见 [readiness](D:/CAD-Harness0.2/docs/milestone-20-readiness.md)。
+
+## T5C V2 Closeout — 2026-10-13
+
+上述停止点保留为历史。阶段A adapter验证、阶段B维护者v1封存/失败及用户授权v2契约声明修订、阶段C正式离线接入和最终readiness现已完成。**T5 COMPLETE（技术准备），READY_FOR_M20**，详见 [T5C v2报告](D:/CAD-Harness0.2/docs/m20-preparation-T5C-v2-readiness-verification.md)。
+
+候选427项不变；P0角度仍是degree布局需求并由三阶段Oracle保留，只有错误的毫米preservedSources声明被移出。52/52新纯回归、14项旧证据断言、29槽正式冻结与成本校验通过。v1包/失败及旧原生结论不覆盖。**0新增provider/native，executionAuthorized=false、budgetApproval=PENDING；M20正式结果NOT_RUN**，没有将开发或离线结果当成正式成功率。

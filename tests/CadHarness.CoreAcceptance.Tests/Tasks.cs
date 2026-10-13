@@ -5,7 +5,10 @@ using CadHarness.Ir.V03;
 using CadHarness.Planning;
 
 internal sealed record TaskDefinition(string Id,string Family,string Intent,ConstructionProgram Program,
-    ConstructionPlanRequest Request,double OldValue,double NewValue,double ColdValue,string DraftJson);
+    ConstructionPlanRequest Request,double OldValue,double NewValue,double ColdValue,string DraftJson)
+{
+    public CapsuleGeometry[]? Expected {get;init;}
+}
 internal sealed record GeometryPhase(long Revision,double Value,double Volume,double[] Bounds,double[][] Cylinders);
 
 internal static class Cases
@@ -30,6 +33,7 @@ internal static class Tasks
     internal static GeometryPhase Geometry(TaskDefinition task,int phase)
     {
         var v=phase==0?task.OldValue:phase==1?task.NewValue:task.ColdValue;
+        if(task.Expected is { } explicitExpected)return CapsuleExpected(explicitExpected[phase],phase+1,v);
         return task.Family switch
         {
             "C1"=>new(phase+1,v,Math.PI*(4500+v*v*36+(v-2)*(v-2)*4+1620),new[]{0d,-15,-15,80,15,15},
@@ -42,4 +46,12 @@ internal static class Tasks
             _=>throw new InvalidOperationException("No frozen independent geometry for task")
         };
     }
+    internal static GeometryPhase CapsuleExpected(CapsuleGeometry g,long revision,double value)=>new(revision,value,
+        g.Width*g.Height*g.Thickness-g.Slots.Sum(s=>(s.Width*(s.Length-s.Width)+Math.PI*s.Width*s.Width/4)*s.Depth),
+        new[]{-g.Width/2,-g.Height/2,0,g.Width/2,g.Height/2,g.Thickness},
+        g.Slots.SelectMany(s=>new[]{-1,1}.Select(sign=>
+        {
+            var a=s.Angle*Math.PI/180;var h=(s.Length-s.Width)/2;
+            return new[]{s.Width/2,s.X-sign*Math.Sin(a)*h,s.Y+sign*Math.Cos(a)*h,g.Thickness-s.Depth,g.Thickness};
+        })).ToArray());
 }

@@ -481,7 +481,7 @@ public sealed partial class SolidWorksExecutionContext
                 if (c.genericFeatures.TryGetValue(o.SemanticId, out var f)) c.genericFeatures[o.SemanticId] = f with { Operation = o };
             return p.Changes;
         }
-        public bool Rebuild() => c.Document.ForceRebuild3(false) && c.Document.Extension.NeedsRebuild2 == 0;
+        public bool Rebuild() => ExecutionTelemetry.Rebuild(() => c.Document.ForceRebuild3(false)) && c.Document.Extension.NeedsRebuild2 == 0;
         public void ValidatePostconditions(GenericPrepared p)
         {
             c.VerifyGeneric(p.Program);

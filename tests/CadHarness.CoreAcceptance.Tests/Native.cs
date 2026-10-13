@@ -13,25 +13,37 @@ using Environment=System.Environment;
 
 internal static partial class Program
 {
-    private static string Ledger=>Path.Combine(Root,Development?"artifacts/m20-preparation/T5/native-budget.json":"artifacts/milestone20/native-budget.json");
+    private static string Ledger=>Development?Path.Combine(Root,"artifacts/m20-preparation/T5/native-budget.json"):Path.Combine(Output,"native-budget.json");
     private static int Native(FreezeRecord freeze,Slot slot)
     {
         var mode=Environment.GetEnvironmentVariable("CAD_HARNESS_M20_PHASE")??"native";
         Check(slot.MaximumOpens>0||slot.MaximumParts>0,"This slot reuses immutable evidence; never execute it again");
         var path=Path.Combine(Output,"slots",slot.Id);var events=0;var time=Stopwatch.StartNew();
-        void Journal(string phase,object data)=>Write(Path.Combine(path,"steps",mode,(++events).ToString("D4")+"-"+phase+".json"),new{utc=DateTime.UtcNow,controller=Environment.ProcessId,elapsedMilliseconds=time.Elapsed.TotalMilliseconds,phase,data});
+        using var telemetry=ExecutionTelemetry.Start();
+        void Journal(string phase,object data)=>Write(Path.Combine(path,"steps",mode,(++events).ToString("D4")+"-"+phase+".json"),new{utc=DateTime.UtcNow,controller=Environment.ProcessId,elapsedMilliseconds=time.Elapsed.TotalMilliseconds,phase,data,telemetry=telemetry.Snapshot()});
         if(slot.Mode=="real"&&Read<JsonElement>(Path.Combine(path,"plan.json")).GetProperty("status").GetString()!="planned")
-        {Write(Path.Combine(path,"native-result.json"),new{status="REFUSED",attempted=false,reason="No executable live plan",completeTask=false});return 0;}
-        using var budget=new NativeTestBudget(Ledger,Development?"T5":"M20",int.MaxValue);
+        {Write(Path.Combine(path,"native-result.json"),new{status="REFUSED",attempted=false,reason="No executable live plan",completeTask=false,cleanup=true,contained=true});return 0;}
+        var replay=slot.Mode=="real"?VerifyReplay(freeze,slot):((string Raw,ReplayBinding Binding,JsonElement Plan)?)null;
+        using var budget=new NativeTestBudget(Ledger,Development?"T5":"M20",Development?int.MaxValue:ExecutionApproval!.ApprovedParts);
         using var connection=SolidWorksConnection.Connect(false);var app=connection.Application;
         var before=Documents(app);var resource=NativeResourceGuard.Inspect(app,budget);
         Check(resource.Responding&&resource.GdiCount<7000&&budget.Snapshot.OpenTestOwnedTitles.Count==0,"Native resource/ownership refusal");
         var initial=JsonSerializer.Serialize(budget.Snapshot,Json);Journal("before",new{resource,budget=budget.Snapshot,documents=before});
-        var lifecycle=new Lifecycle(budget,Journal);GenericPartSession? session=null;
+        var reservations=Development?null:new FormalReservations(Path.Combine(Output,"reservations"),ExecutionApproval!,slot.Id,mode);
+        var lifecycle=new Lifecycle(budget,Journal,reservations,Development?int.MaxValue:ExecutionApproval!.ApprovedOpens);GenericPartSession? session=null;
         bool native=false,editable=false,edited=false,reopened=false,saved=false,cleanup=false;
-        string? failure=null,package=null,nativeSha=null,manifestSha=null;long? revision=null;double? value=null;
+        string? failure=null,package=null,nativeSha=null,manifestSha=null;long? revision=null;double? value=null;var integrity=true;
+        var runtimeSpan=ExecutionTelemetry.Measure(ExecutionPhase.Runtime);
         try
         {
+            if((freeze.Formal is not null||IncrementalRun)&&slot.Mode=="g2-cold")
+            {
+                var prior=Stage(Path.Combine(Output,"slots",slot.Pair!,"native-result.json"));
+                var root=Path.Combine(Output,"packages/G2");
+                Check(prior is {Status:"PASS",Cleanup:true}&&prior.Controller!=Environment.ProcessId&&prior.Package==root&&
+                    ManagedRevisionStore.Hash(Path.Combine(root,"current.json"))==prior.ManifestSha&&ManagedRevisionStore.Hash(Path.Combine(root,"working/CADHarnessManagedPart.SLDPRT"))==prior.NativeSha,
+                    "G2 independent cold/controller authority association failed");
+            }
             if(slot.Mode.StartsWith("external",StringComparison.Ordinal)||slot.Mode=="readonly")
             {
                 External(freeze,slot,connection,lifecycle,Journal);
@@ -62,8 +74,9 @@ internal static partial class Program
                 session.Context.SketchEvidenceSink=t=>Journal("sketch-api",t);session.Context.FeatureEvidenceSink=t=>Journal("feature-api",t);session.SaveEvidenceSink=t=>Journal("save-api",t);
                 if(mode=="native"&&continuation is null)
                 {
-                    var response=slot.Mode=="real"?Read<JsonElement>(Path.Combine(path,"plan.json")).GetProperty("preview").GetProperty("responseJson").GetString()!:task.DraftJson;
-                    var plan=new ConstructionPlanner(SolidWorksConstructionPlanningRuntime.ForManagedSession(session.Context),new ReplaySource(response)).PlanAsync(task.Request).GetAwaiter().GetResult();
+                    var runtime=SolidWorksConstructionPlanningRuntime.ForManagedSession(session.Context);
+                    var plan=replay is { } live?ReplayAccepted(task.Request,live.Raw,live.Binding,live.Plan,runtime):
+                        new ConstructionPlanner(runtime,new ReplaySource(task.DraftJson)).PlanAsync(task.Request).GetAwaiter().GetResult();
                     Journal("public-preview",plan);Check(plan.Preview is not null,"Native-context task admission failed: "+plan.Message);
                     var built=session.ExecuteConstructionPlan(plan.Preview!.Approve(plan.Preview.Sha256));Journal("public-create",built);
                     Check(built.Succeeded&&built.StateCommitted&&built.Revision==1,"Creation/publish failed: "+built.Message);
@@ -102,15 +115,18 @@ internal static partial class Program
         {
             session?.Dispose();var after=Documents(app);var resources=NativeResourceGuard.Inspect(app,budget);
             cleanup=lifecycle.Owned==0&&budget.Snapshot.OpenTestOwnedTitles.Count==0&&JsonSerializer.Serialize(before,Json)==JsonSerializer.Serialize(after,Json)&&resources.Responding&&resources.GdiCount<7000&&(session is null||session.OriginalActiveRestored);
-            try{VerifyFreeze(freeze);}catch(Exception e){failure=(failure??"")+e;}
+            try{VerifyFreeze(freeze);}catch(Exception e){integrity=false;failure=(failure??"")+e;}
+            if(package is not null&&File.Exists(Path.Combine(package,"recovery.json"))){integrity=false;failure=(failure??"")+" Unresolved durable recovery marker";}
+            if(failure?.Contains("FORMAL_BUDGET_EXHAUSTED",StringComparison.Ordinal)==true)integrity=false;
             if(!cleanup)failure=(failure??"")+" Cleanup/resource failed";
+            runtimeSpan.Dispose();
             Write(Path.Combine(path,mode+"-result.json"),new{slot,phase=mode,status=failure is null?"PASS":"FAIL",controller=Environment.ProcessId,package,revision,value,nativeSha,manifestSha,
-                nativePassed=native,editablePassed=editable,followUpPassed=edited,reopenPassed=reopened,saved,cleanup,failure,
-                initialBudget=JsonSerializer.Deserialize<JsonElement>(initial),budget=budget.Snapshot,elapsedMilliseconds=time.Elapsed.TotalMilliseconds,resources,before,after});
+                nativePassed=native,editablePassed=editable,followUpPassed=edited,reopenPassed=reopened,saved,cleanup,failure,integrity,contained=cleanup&&integrity,
+                initialBudget=JsonSerializer.Deserialize<JsonElement>(initial),budget=budget.Snapshot,elapsedMilliseconds=time.Elapsed.TotalMilliseconds,resources,before,after,telemetry=telemetry.Snapshot()});
         }
         Console.WriteLine(slot.Id+" "+mode+": "+(failure is null?"PASS":"FAIL "+failure));
         // A contained failure is still FAIL in evidence; only unsafe cleanup stops the schedule.
-        return cleanup?0:1;
+        return cleanup&&integrity?0:1;
     }
     private static object[] Documents(ISldWorks app)=>NativeEditOracle.Items<IModelDoc2>(app.GetDocuments()).Select(d=>(object)new{title=d.GetTitle(),path=d.GetPathName(),dirty=d.GetSaveFlag()}).OrderBy(d=>JsonSerializer.Serialize(d)).ToArray();
     private static GenericNativeParameter ResolveEditTarget(GenericRevisionPackage package)
@@ -134,13 +150,14 @@ internal static partial class Program
         Oracle(session.Context.Document,task,expected,log);
         log("phase-state",new{expected,current.State.Revision,parameter,features=current.State.Features.Count,dependencies=current.State.Dependencies});
     }
-    private sealed class Lifecycle(NativeTestBudget budget,Action<string,object> journal):IGenericDocumentLifecycle
+    private sealed class Lifecycle(NativeTestBudget budget,Action<string,object> journal,FormalReservations? reservations=null,int maximumOpens=int.MaxValue):IGenericDocumentLifecycle
     {
         internal int Owned;
-        public void BeforeCreate(){budget.ReserveCreation();journal("reserve-create",budget.Snapshot);}
+        internal void ReserveLegacyCreation()=>reservations?.Reserve("create");
+        public void BeforeCreate(){reservations?.Reserve("create");budget.ReserveCreation();journal("reserve-create",budget.Snapshot);}
         public void Created(string title){budget.RegisterCreated(title);Owned++;journal("created",new{title});}
         public void Renamed(string a,string b){budget.RenameOwned(a,b);journal("renamed",new{a,b});}
-        public void BeforeOpen(string path){budget.ReserveOpen(int.MaxValue);journal("reserve-open",new{path,budget=budget.Snapshot});}
+        public void BeforeOpen(string path){reservations?.Reserve("open");budget.ReserveOpen(maximumOpens);journal("reserve-open",new{path,budget=budget.Snapshot});}
         public void Opened(string path,string title){budget.RegisterOpened(title);Owned++;journal("opened",new{path,title});}
         public void Closed(string path,string title){budget.RegisterClosed(title);Owned--;journal("closed",new{path,title});}
     }

@@ -21,11 +21,21 @@ internal sealed record OracleHole(string Label,double X,double Y,double Diameter
 internal sealed record OraclePattern(string Label,string Seed,int Count,double Spacing);
 internal sealed record OracleInput(string Id,string Provenance,FrozenFile Source,string Configuration,double Width,double Height,double Depth,
     IReadOnlyList<OracleHole> Holes,OraclePattern Pattern,IReadOnlyDictionary<string,string> References,string? FactoryReady,double BlindDepth,double BlindX,double BlindY,double BlindDiameter,int EquationCount);
-internal sealed record Slot(string Id,string Mode,string Task,string Source,int MaximumParts,int MaximumOpens);
+internal sealed record Slot(string Id,string Mode,string Task,string Source,int MaximumParts,int MaximumOpens)
+{
+    public string Gate {get;init;}="development";
+    public string? Pair {get;init;}
+    public string[] Phases=>Mode switch
+    {
+        "real"=>new[]{"plan","native","cold","read"},"deterministic"=>new[]{"native","cold","read"},"negative-planning"=>new[]{"plan"},_=>new[]{"native"}
+    };
+}
 internal sealed record FreezeRecord(string Baseline,string Provider,string RequestedModel,int MaximumOutputTokens,int TimeoutSeconds,
     string Capability,string ResponseSchema,TaskDefinition[] Tasks,Slot[] Slots,FrozenFile[] Files,OracleInput[] External,
     string[] Deferred,string Authorization,DateTime Utc)
 {
+    public FormalContext? Formal {get;init;}
+    public ExternalProtocol[] FormalExternal {get;init;}=Array.Empty<ExternalProtocol>();
     public Continuation? Continuation {get;init;}
     public CoreEvidence[] ReusedCore {get;init;}=Array.Empty<CoreEvidence>();
     public CompletedExternal? CompletedExternal {get;init;}
@@ -55,19 +65,25 @@ internal static partial class Program
         try
         {
             Root=Path.GetFullPath(args[0]);
+            if(args[1]=="--incremental")return Incremental(args[2],args[3],args.Length>4?args[4]:null);
             if(args[1]=="--pure")return Pure();
+            if(args[1]=="--t5a-pure")return T5APure(args[2]);
             Development=args.Contains("--development");
             Check(ContractValidation.Id(args[2]),"Invalid run ID");Output=Path.Combine(Root,Development?"artifacts/m20-preparation/T5":"artifacts/milestone20",args[2]);
             if(args[1]=="--audit")return PreparationAudit();
             if(args[1]=="--verify-package")return VerifyExistingPackage(args[3],args[4]);
             if(args[1]=="--ownership-audit")return OwnershipAudit(args.Length>3?args[3]:"inspect");
-            if(args[1]=="--freeze")return Freeze();
+            if(args[1]=="--freeze")return Development?Freeze():FreezeFormal(args[3]);
             var freeze=Read<FreezeRecord>(Path.Combine(Output,"freeze.json"));
             if(args[1]=="--summarize")return Summarize(freeze);
             VerifyFreeze(freeze);
+            if(args[1]=="--begin-execution")return BeginExecution(freeze,args[3]);
+            if(!Development)CheckExecution(freeze);
             var slot=freeze.Slots.Single(s=>s.Id==args[3]);
-            if(args[1]=="--cold")Environment.SetEnvironmentVariable("CAD_HARNESS_M20_PHASE","cold");
-            if(args[1]=="--read")Environment.SetEnvironmentVariable("CAD_HARNESS_M20_PHASE","read");
+            Check(args[1] is "--plan" or "--native" or "--cold" or "--read","Unknown execution phase");
+            Check(args[1]!="--plan"||slot.Mode is "real" or "negative-planning","Planning not scheduled for this slot");
+            Check(args[1] is not "--cold" and not "--read"||slot.Mode is "real" or "deterministic","Continuation not scheduled for this slot");
+            Environment.SetEnvironmentVariable("CAD_HARNESS_M20_PHASE",args[1]=="--cold"?"cold":args[1]=="--read"?"read":"native");
             var marker=Path.Combine(Output,"slots",slot.Id,args[1].TrimStart('-')+"-started.json");
             Write(marker,new{utc=DateTime.UtcNow,controller=Environment.ProcessId,slot});
             if(args[1]=="--plan")return Plan(freeze,slot);
@@ -166,22 +182,35 @@ internal static partial class Program
     {
         var seal=Read<FrozenFile>(Path.Combine(Output,"freeze-seal.json"));Check(Identity(seal.Path)==seal,"Freeze metadata changed");
         foreach(var f in freeze.Files)Check(Identity(f.Path)==f,"Frozen file changed: "+f.Path);
-        Check(freeze.RequestedModel=="deepseek-chat"&&freeze.MaximumOutputTokens==8192&&freeze.TimeoutSeconds==120,"Provider settings drift");
+        if(freeze.Formal is { } formal)
+        {
+            Check(formal.ManifestIdentity==Identity(formal.ManifestIdentity.Path),"Manifest drift");
+            var current=LoadFormal(formal.ManifestIdentity.Path,formal.Manifest.Development);
+            Check(Canonical(current)==Canonical(formal)&&freeze.RequestedModel==FormalProvider.Alias&&freeze.Provider==FormalProvider.Endpoint&&
+                freeze.MaximumOutputTokens==FormalProvider.MaximumOutputTokens&&freeze.TimeoutSeconds==FormalProvider.TimeoutSeconds,"Formal source/schedule/provider drift");
+            Check(freeze.Continuation is null&&freeze.ReusedCore.Length==0&&freeze.CompletedExternal is null,"Development reuse leaked into formal freeze");
+        }
+        else if(IncrementalRun)Check(freeze.Provider=="none"&&freeze.RequestedModel=="none"&&freeze.Slots.Length==3,"Incremental schedule drift");
+        else Check(Development&&freeze.RequestedModel=="deepseek-chat"&&freeze.MaximumOutputTokens==8192&&freeze.TimeoutSeconds==120,"Provider settings drift or legacy formal freeze rejected");
     }
     private static int Plan(FreezeRecord freeze,Slot slot)
     {
         var output=Path.Combine(Output,"slots",slot.Id);var time=Stopwatch.StartNew();
-        var request=PlanningRequest(freeze.Tasks,slot);
+        var request=freeze.Formal is not null&&slot.Mode=="negative-planning"?freeze.Formal.Manifest.Negatives.Single(n=>n.Id==slot.Task).Request:PlanningRequest(freeze.Tasks,slot);
         using var client=OpenAiPlanSource.CreateClient();
         var key=Environment.GetEnvironmentVariable("CAD_HARNESS_LLM_API_KEY")??throw new InvalidOperationException("Configured provider credential is missing");
         var provider=new DeepSeekPlanSource(client,freeze.RequestedModel,key,freeze.MaximumOutputTokens,freeze.TimeoutSeconds);
-        var source=new EvidenceSource(provider,output,Read<PlannerPrompt>(Path.Combine(Output,"prompts",slot.Id+".json")));
+        var promptPath=Path.Combine(Output,"prompts",slot.Id+".json");
+        var source=new EvidenceSource(provider,output,File.Exists(promptPath)?Read<PlannerPrompt>(promptPath):null,freeze.Formal?.Manifest.Provider);
         var result=new ConstructionPlanner(SolidWorksConstructionPlanningRuntime.ForNewModel(),source).PlanAsync(request).GetAwaiter().GetResult();
         Write(Path.Combine(output,"plan.json"),result);
+        if(slot.Mode=="real"&&result.Preview is not null)BindReplay(freeze,slot,result,source.Frozen!);
         Write(Path.Combine(output,"planning-result.json"),new{slot,result.Status,result.FailureCode,result.Message,result.ModelCalls,result.InputTokens,result.OutputTokens,
             source.ReturnedModel,planningMilliseconds=time.Elapsed.TotalMilliseconds,planningPassed=result.Status==ConstructionPlanningStatus.Planned,
-            negativePassed=slot.Mode=="negative-planning"&&result.Status==ConstructionPlanningStatus.NeedsClarification,
+            negativePassed=slot.Mode=="negative-planning"&&(freeze.Formal is null?result.Status==ConstructionPlanningStatus.NeedsClarification:NegativePassed(freeze.Formal.Manifest.Negatives.Single(n=>n.Id==slot.Task),result)),
+            contained=true,cleanup=true,
             nativePassed=false,editablePassed=false,followUpPassed=false,reopenPassed=false,completeTask=false,nativeMutationStarted=false});
+        Write(Path.Combine(output,"planning-seal.json"),Directory.GetFiles(output,"*.json").Where(p=>Path.GetFileName(p)!="plan-started.json").Select(Identity).ToArray());
         Console.WriteLine(slot.Id+": "+result.Status+" "+result.Message);return 0;
     }
     private static ConstructionPlanRequest PlanningRequest(TaskDefinition[] tasks,Slot slot)=>slot.Mode=="negative-planning"?
@@ -192,14 +221,15 @@ internal static partial class Program
         internal PlannerPrompt? Prompt;
         public Task<StructuredPlanResponse> GenerateAsync(PlannerPrompt prompt,CancellationToken token){Prompt=prompt;return Task.FromResult(new StructuredPlanResponse("{}"));}
     }
-    private sealed class EvidenceSource(IStructuredPlanSource source,string path,PlannerPrompt frozen):IStructuredPlanSource
+    private sealed class EvidenceSource(IStructuredPlanSource source,string path,PlannerPrompt? frozen,ProviderSettings? settings=null):IStructuredPlanSource
     {
         public bool IsModelBacked=>true;
         internal string? ReturnedModel;
+        internal PlannerPrompt? Frozen=>frozen;
         public async Task<StructuredPlanResponse> GenerateAsync(PlannerPrompt prompt,CancellationToken token)
         {
-            Check(JsonSerializer.Serialize(prompt,Json)==JsonSerializer.Serialize(frozen,Json),"Formal provider prompt differs from premeasurement freeze");
-            Write(Path.Combine(path,"provider-request.json"),new{utc=DateTime.UtcNow,prompt,requestedModel="deepseek-chat",provider="https://api.deepseek.com/responses",store=false,noRetry=true});
+            Check(frozen is not null&&JsonSerializer.Serialize(prompt,Json)==JsonSerializer.Serialize(frozen,Json),"Formal provider prompt differs from premeasurement freeze");
+            Write(Path.Combine(path,"provider-request.json"),new{utc=DateTime.UtcNow,prompt,requestedModel="deepseek-chat",provider="https://api.deepseek.com/responses",settings,store=false,noRetry=true});
             try
             {
                 var response=await source.GenerateAsync(prompt,token).ConfigureAwait(false);
