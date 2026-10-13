@@ -8,7 +8,7 @@ using CadHarness.State;
 
 namespace CadHarness.Playground;
 
-public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispatcher, IProviderFactory providers) : IAsyncDisposable
+public sealed partial class PlaygroundSession(INativeSession native, StaDispatcher dispatcher, IProviderFactory providers) : IAsyncDisposable
 {
     private readonly SemaphoreSlim admission = new(1, 1);
     private readonly Credentials credentials = new();
@@ -19,8 +19,8 @@ public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispa
     private object? lastResult;
     private bool shuttingDown;
     public object Status => new { llm = credentials.View, solidworks = status, busy = admission.CurrentCount == 0,
-        plan = plan?.View, lastResult };
-    public object State => Wire.StateView(state);
+        plan = plan?.View, modernPreview = modernPending?.View, model, lastResult };
+    public object State => model is null ? Wire.StateView(state) : new { available = true, model };
     public object Events => events.ToArray();
     public string Serialize(object value) => credentials.SanitizeJson(JsonSerializer.Serialize(value, Wire.Options));
     public ApiResult Capabilities() => ApiResult.Ok("capability", Wire.Json(SolidWorksPlanningRuntime.ForConstruction().Capabilities.ToPromptJson()));
@@ -42,12 +42,18 @@ public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispa
         }
         catch (Exception error)
         {
-            var code = error switch { PlannerException p => p.Code, StateException s => s.Code, OperationCanceledException => "REQUEST_CANCELLED",
+            var code = error switch { PlannerException p => p.Code, StateException s => s.Code, CadHarness.Ir.V03.ContractException c => c.Code, OperationCanceledException => "REQUEST_CANCELLED",
                 _ when stage == "connection" => "SOLIDWORKS_CONNECTION_FAILED", _ when stage == "execution" => "NATIVE_EXECUTION_FAILED",
                 _ when stage == "cleanup" => "CLEANUP_FAILED", _ => "PLAYGROUND_ACTION_FAILED" };
-            var message = error is PlannerException or StateException ? credentials.Sanitize(error.Message) : "Action failed; no automatic retry. Inspect session status before continuing.";
+            var message = error is PlannerException or StateException or CadHarness.Ir.V03.ContractException ? credentials.Sanitize(error.Message) : "Action failed; no automatic retry. Inspect session status before continuing.";
             // Pull updated ownership flags even if native creation failed early.
-            status = native.Status; state = native.State;
+            status = native.Status; state = native.State; model = (native as IModernNativeSession)?.Model;
+            if (stage == "cleanup")
+            {
+                status = status with { Healthy = false };
+                if (model is not null) model = model with { Editable = false, Phase = "cleanup_required", Features = model.Features.Select(f => f with
+                    { Support = "read_only", Parameters = f.Parameters.Select(p => p with { Editable = false }).ToArray() }).ToArray() };
+            }
             var result = ApiResult.Fail(stage, code, message);
             events.Enqueue(new(DateTimeOffset.Now, stage, false, code, message)); lastResult = result;
             return result;
@@ -56,11 +62,11 @@ public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispa
     }
     public Task<ApiResult> Configure(LlmSettings input) => Guard("configuration", () =>
     {
-        credentials.Configure(input); plan = null;
+        credentials.Configure(input); InvalidatePlans();
         return Task.FromResult(ApiResult.Ok("configuration", credentials.View, "Credential held in server memory."));
     });
     public Task<ApiResult> Clear() => Guard("configuration", () =>
-    { credentials.Clear(); plan = null; return Task.FromResult(ApiResult.Ok("configuration", credentials.View, "Credential cleared.")); });
+    { credentials.Clear(); InvalidatePlans(); return Task.FromResult(ApiResult.Ok("configuration", credentials.View, "Credential cleared.")); });
 
     public Task<ApiResult> TestConnection(CancellationToken cancellation) => Guard("provider", async () =>
     {
@@ -77,7 +83,7 @@ public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispa
 
     public Task<ApiResult> Plan(IntentRequest request, bool edit, CancellationToken cancellation) => Guard("planning", async () =>
     {
-        plan = null; // Every attempt invalidates the earlier approval, even on rejection.
+        InvalidatePlans(); // Every attempt invalidates the earlier approval, even on rejection.
         if (string.IsNullOrWhiteSpace(request.Intent) || System.Text.Encoding.UTF8.GetByteCount(request.Intent) > CadPlanner.MaximumIntentBytes)
             return ApiResult.Fail("input", "PLANNER_INPUT_INVALID", "Intent must be nonempty and at most 8192 UTF-8 bytes.");
         IPlanningRuntime runtime;
@@ -154,14 +160,14 @@ public sealed class PlaygroundSession(INativeSession native, StaDispatcher dispa
         plan = stored with { View = stored.View with { PreflightId = null } };
         events.Enqueue(new(DateTimeOffset.Now, "authorization", true, null, edit ? "User confirmed one edit." : "User confirmed one test Part."));
         var result = await dispatcher.Invoke(() => edit ? native.Edit(stored.Program, request.Revision!.Value) : native.Create(stored.Program, request.AutoClose));
-        status = result.Status; state = native.State;
+        status = result.Status; state = native.State; model = (native as IModernNativeSession)?.Model;
         var output = new { result.Transaction, result.Operations, result.Timing, result.Status, state = Wire.StateView(result.State) };
         return result.Succeeded ? ApiResult.Ok("execution", output, result.Message) : ApiResult.Fail(result.Transaction?.Stage ?? "execution", result.FailureCode!, result.Message, output);
     });
     public Task<ApiResult> Close() => Guard("cleanup", async () =>
-    { plan = null; status = await dispatcher.Invoke(() => native.Close()); state = native.State; return ApiResult.Ok("cleanup", status, "Owned Part closed/discarded; original active document restored when available."); });
+    { InvalidatePlans(); status = await dispatcher.Invoke(() => native.Close()); state = native.State; model = (native as IModernNativeSession)?.Model; return ApiResult.Ok("cleanup", status, "Owned Part closed/discarded; original active document restored when available."); });
     public Task<ApiResult> Export() => Guard("export", () => Task.FromResult(ApiResult.Ok("export", new
-    { exported = DateTimeOffset.Now, status, plan = plan?.View, lastResult, state = Wire.StateView(state), events = events.ToArray() })));
+    { exported = DateTimeOffset.Now, status, plan = plan?.View, modernPreview = modernPending?.View, model, lastResult, state = Wire.StateView(state), events = events.ToArray() })));
     public async ValueTask DisposeAsync()
     {
         shuttingDown = true; await admission.WaitAsync();

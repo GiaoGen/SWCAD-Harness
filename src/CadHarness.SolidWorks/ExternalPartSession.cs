@@ -31,6 +31,7 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
     private readonly string? originalTitle;
     private readonly int thread = System.Environment.CurrentManagedThreadId;
     private readonly SavedNativeReadProof proof = new();
+    private readonly Guid querySession = Guid.NewGuid();
     private IModelDoc2? owned;
     private bool disposed;
     private readonly List<ExternalPreparedEdit> pendingReadbacks = new();
@@ -111,6 +112,26 @@ public sealed class ExternalPartSession : IExternalEditSession, IDisposable
     }
     public ExternalEditResult Edit(EditSetRequest request) => Edit(new ExternalEditCommand(request, null));
     public ExternalEditResult Edit(ScalarEditRequest request) => Edit(new ExternalEditCommand(null, request));
+    public QueryPlanningResult PreviewEditSet(QueryEditSetRequest request)
+    {
+        Check(); RequireQuerySession();
+        var current = Store.ReadCurrent().External ?? throw new StateException(V03FailureCodes.ModeMismatch, "Query requires an external companion.");
+        VerifyLive(current);
+        return ExternalQueryPlanning.Prepare(current, request, querySession);
+    }
+    public ExternalEditResult Edit(QueryEditApproval approval)
+    {
+        Check(); RequireQuerySession();
+        var frozen = approval.Consume(querySession);
+        var current = Store.ReadCurrent().External ?? throw new StateException(V03FailureCodes.ModeMismatch, "Query requires an external companion.");
+        // Native reinspection precedes requery and the existing M14 checkpoint boundary.
+        VerifyLive(current);
+        return Edit(ExternalQueryPlanning.Revalidate(current, frozen));
+    }
+    private void RequireQuerySession()
+    {
+        if (Status != ReopenStatus.Editable) throw new StateException(V03FailureCodes.IncompleteDurablePublish, "Query needs an owned editable session.");
+    }
     private ExternalEditResult Edit(ExternalEditCommand command)
     {
         Check();

@@ -14,6 +14,8 @@ internal static class Program
     private static void Check(bool condition, string name) { if (!condition) throw new Exception(name); passed++; Console.WriteLine("PASS " + name); }
     private static async Task Main(string[] args)
     {
+        if (args.Contains("--modern-serve")) { await ModernTests.Serve(); return; }
+        if (args.Contains("--modern-only")) { await ModernTests.Run(); return; }
         var fake = new FakeNative(); var provider = new MockProvider();
         var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
         if (args.Contains("--serve")) port = 5187;
@@ -103,5 +105,6 @@ internal static class Program
         Check((await client.SendAsync(evil)).StatusCode == HttpStatusCode.Forbidden, "cross-origin native request blocked");
         Console.WriteLine($"{passed} checks PASS. SOLIDWORKS launched: NO. Native Parts created: 0. Mock Parts: {fake.Status.PartsCreated}/{fake.Status.PartsClosed}.");
         await app.StopAsync();
+        await ModernTests.Run();
     }
 }

@@ -4,6 +4,7 @@
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/CadHarness.Playground/CadHarness.Playground.csproj" />
+    <Compile Include="../CadHarness.ConstructionPlanning.Tests/Cases.cs" Link="Cases.cs" />
     <Content Include="../../src/CadHarness.Playground/wwwroot/**" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

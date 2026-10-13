@@ -1,11 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SWCAD-Harness Playground</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SWCAD-Harness Playground</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script><script src="/modern.js" defer></script><script src="/icons.js" type="module"></script></head>
 <body>
-<header><div><strong>SWCAD-Harness</strong><span class="label">PLAYGROUND / DEBUG CONSOLE V0</span></div><button id="theme" class="quiet">Light / Dark</button></header>
+<header><div><strong>SWCAD-Harness</strong><span class="label">LOCAL PLAYGROUND v0.3</span></div><button id="theme" class="quiet">Light / Dark</button></header>
 <div id="status" class="statusbar" aria-live="polite"></div>
 <main>
 <aside class="controls">
+<label>Workflow<select id="workflow"><option value="modern">v0.3 model workspace</option><option value="legacy">v0.2 legacy workspace</option></select></label>
 <section><h2>01 · Provider configuration</h2><form id="config">
 <label>Provider<select id="provider"><option value="deepseek">DeepSeek</option><option value="responses">Responses compatible</option></select></label>
 <label>Endpoint<input id="endpoint" type="url" value="https://api.deepseek.com/responses" required></label>
@@ -14,13 +15,24 @@
 <label>API key<input id="key" type="password" autocomplete="off" maxlength="4096" placeholder="Server memory only"></label>
 <div class="pair"><label>Timeout · seconds<input id="timeout" type="number" value="120" min="1" max="300"></label><label>Max output tokens<input id="tokens" type="number" value="8192" min="256" max="32768"></label></div>
 <button type="submit" data-action>Apply settings</button></form><div class="buttons"><button id="test" disabled data-action>Test connection</button><button id="clear" data-action class="quiet">Clear API key</button></div>
-<p class="hint">Credentials stay in this host process. Closing the host clears them. Test Connection makes one provider call; no CAD action.</p></section>
+</section>
+<div class="modern">
+<section><h2>Model intake</h2><label>Mode<select id="intakeMode"><option value="inspect">External / read-only inspection</option><option value="external_copy">External / editable working copy</option><option value="external_restore">External / restore package</option><option value="managed_restore">Managed / restore Generic package</option></select></label><label>Source or working .SLDPRT<input id="partPath" placeholder="D:\Parts\part.SLDPRT"></label><label>Package root<input id="packageRoot" disabled></label><label>Configuration<input id="configuration"></label><button id="openModel" data-action>Inspect / Open…</button></section>
+<section><h2>Construction / requirements</h2><label>Intent<textarea id="constructionIntent" rows="3" maxlength="8192"></textarea></label><label>Schema<select id="draftVersion"><option value="2">Semantic v2</option><option value="1">Semantic v1</option><option value="">Strict continuation</option></select></label><div id="requirements"></div><button id="addRequirement" title="Add a given requirement">+ Given dimension</button><div id="rules"></div><button id="addRule" title="Add a disclosed derivation or default">+ Rule / default</button><button id="constructionPlan" data-action>Plan</button><button id="constructionPreflight" data-action>Preflight</button></section>
+<section><h2>External Scalar / EditSet</h2><label>Parameter<select id="queryParameter"><option value="hole_diameter">Hole diameter</option><option value="extrusion_depth">Extrusion depth</option><option value="pattern_count">Pattern count</option><option value="pattern_spacing">Pattern spacing</option></select></label><div class="pair"><label>Old value<input id="queryOld" type="number" step="any"></label><label>New value<input id="queryNew" type="number" step="any"></label></div><label>Subtype<select id="querySubtype"><option value="">Any observed subtype</option><option value="single_circle_through_all_cut">Single-circle through-all cut</option><option value="straight_blind_boss_extrude">Straight blind extrusion</option><option value="single_direction_linear_pattern">Single-direction pattern</option></select></label><label>Host<select id="queryHost"><option value="">Any host</option></select></label><div class="pair"><label>Relation<select id="queryRelation"><option value="">None</option><option value="direct_parent_of">Direct parent of</option><option value="direct_child_of">Direct child of</option><option value="downstream_of">Downstream of</option><option value="pattern_seed_of">Pattern seed of</option></select></label><label>Target<select id="queryRelationTarget"><option value="">None</option></select></label></div><label>Cardinality<select id="queryCardinality"><option value="exactly_one">Exactly one</option><option value="intentional_batch">Intentional batch</option></select></label><button id="addQuery" title="Add a bounded query clause">+ Clause</button><div id="queryClauses"></div><button id="batchPreview" data-action>Preview EditSet</button><button id="scalarPreview" data-action>Preview selected Scalar</button></section>
+<section><h2>Native session</h2><button id="modernConnect" data-action>Connect SOLIDWORKS</button><button id="modernExecute" data-action class="primary">Execute approved preview…</button><button id="modernClose" data-action>Close owned Part</button></section>
+</div><div class="legacy">
 <section><h2>02 · Create intent</h2><label>Natural language intent<textarea id="intent" rows="5" maxlength="8192" placeholder="Create an 80 x 50 x 10 mm rectangular plate."></textarea></label><button id="generate" disabled data-action class="primary">Generate Plan</button>
 <p class="hint">Planning includes strict IR, capability and pure preflight checks. Explicit preflight approval is still required below.</p></section>
 <section><h2>03 · Manual execution</h2><button id="preflight" disabled data-action>Run Preflight</button><button id="connect" data-action>Connect SOLIDWORKS</button><label class="check"><input id="autoclose" type="checkbox">Auto-close test Part after validation</label><button id="execute" disabled data-action class="primary">Execute in SOLIDWORKS…</button><button id="close" disabled data-action class="quiet">Close Test Part</button><p class="hint">Inspect mode · one owned Part maximum. No automatic follow-up or retries.</p></section>
 <section><h2>04 · Edit live model</h2><label>Edit intent<textarea id="editIntent" rows="3" maxlength="8192" placeholder="Change the plate thickness to 10 mm."></textarea></label><button id="editGenerate" disabled data-action>Generate Edit Plan</button><button id="editPreflight" disabled data-action>Preflight Edit</button><button id="editExecute" disabled data-action class="primary">Execute Edit…</button><p class="hint">Requires healthy committed state and the exact current revision.</p></section>
-</aside>
+</div></aside>
 <article class="inspector">
+<div class="modern">
+<section><div class="sectionhead"><h2>Model structure</h2><span id="modelBadge" class="tag">NO MODEL</span></div><div id="modelIdentity" class="empty">No model selected.</div><div id="modelFeatures"></div></section>
+<section><h2>Local relationships</h2><div id="relationGraph" class="empty">No feature selected.</div></section>
+<section><div class="sectionhead"><h2>Provisional preview</h2><span id="modernBadge" class="tag">NO PREVIEW</span></div><div id="modernPlan" class="empty">No preview.</div></section>
+</div><div class="legacy">
 <section class="pipeline"><h2>Pipeline</h2><div class="stages"><span>Intent</span><b>›</b><span>LLM / strict IR</span><b>›</b><span>Capability</span><b>›</b><span>Preflight</span><b>›</b><span>Native</span><b>›</b><span>Rebuild</span><b>›</b><span>Validation</span><b>›</b><span>Commit</span></div><p id="pipelineSummary" class="hint">Waiting for an intent. Every native action requires manual confirmation.</p></section>
 <section><div class="sectionhead"><h2>Plan Inspector</h2><span id="planBadge" class="tag">NO PLAN</span></div><nav class="tabs" aria-label="Plan views"><button data-tab="visual" class="selected">Visual</button><button data-tab="raw">Raw IR</button><button data-tab="relations">Relations</button><button data-tab="capabilities">Capabilities</button><button data-tab="planner">Planner Details</button></nav>
 <div id="visual" class="tab active"><div class="empty">Your typed operations will appear here.<br>Generate → inspect → preflight → confirm execute.</div></div>
@@ -28,7 +40,7 @@
 <div id="relations" class="tab"><div class="empty">No relations yet.</div></div>
 <div id="capabilities" class="tab"><p class="hint">RuntimeCapabilityCatalog ≠ Full OperationRegistry. This is the actual projection received by the planner.</p><div id="capabilityTree"></div></div>
 <div id="planner" class="tab"><div id="plannerTree" class="empty">No provider call yet.</div></div></section>
-<section><h2>Preflight / Execution</h2><div id="result" aria-live="polite" class="empty">No action performed.</div></section>
+</div><section><h2>Preflight / Execution</h2><div id="result" aria-live="polite" class="empty">No action performed.</div></section>
 <section><div class="sectionhead"><h2>Event Log</h2><button id="export" data-action class="quiet">Export Session Report</button></div><div id="events" class="eventlog">No events.</div></section>
 </article>
 <aside class="state"><section><div class="sectionhead"><h2>CADState</h2><span id="revision" class="tag">REV —</span></div><p class="hint">Committed state · semantic IDs and persistent references. Native COM objects never cross this boundary.</p><div id="stateTree" class="empty">No committed live state.</div></section></aside>

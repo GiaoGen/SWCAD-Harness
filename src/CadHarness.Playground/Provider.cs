@@ -17,6 +17,7 @@ internal sealed class ObservedSource(IStructuredPlanSource inner) : IStructuredP
     public bool IsModelBacked => inner.IsModelBacked;
     public string? ActualModel { get; private set; }
     public double ProviderWallMs { get; private set; }
+    public string? ResponseJson { get; private set; }
     public async Task<StructuredPlanResponse> GenerateAsync(PlannerPrompt prompt, CancellationToken cancellationToken)
     {
         StructuredPlanResponse response;
@@ -31,6 +32,7 @@ internal sealed class ObservedSource(IStructuredPlanSource inner) : IStructuredP
             if (doc.RootElement.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String)
                 ActualModel = model.GetString();
         }
+        ResponseJson = response.Json;
         return response;
     }
 }

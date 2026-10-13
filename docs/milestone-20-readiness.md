@@ -1,5 +1,7 @@
 # Milestone 20 Readiness
 
+后续P1状态（2026-10-13）：**M18 Query／Preview COMPLETE；M19 Local relations / Playground COMPLETE**。M18实际公开批量、漂移／歧义拒绝、回滚及独立cold通过，见[M18验证](D:/CAD-Harness0.2/docs/milestone-18-verification.md)。M19按PRD的0-native pure/mock API及UI验收通过（54项新增API、97项旧回归、22项浏览器检查），见[M19验证](D:/CAD-Harness0.2/docs/milestone-19-verification.md)。独立C5/C6仍未验收；下文M20关闭时的M18/M19 deferred记录保留当时范围，不回填历史。
+
 最新结论（2026-10-13批准增量收尾）：**M20 COMPLETE**。有限判分纠正及遥测证据分配已明确获批；原始两条响应离线回放／补充判分通过，25项增量断言与52项纯回归通过，C3及G2五个公开原生／独立cold阶段全部PASS。没有新provider调用、Prompt／Schema／CAD能力修改或完整M20重跑。本轮1 Part／9 opens／10 closes，原件及8,674份历史身份不变，最终owned=0、无恢复遗留。旧 `acceptance_t5b_v2` 的 **23/25及releaseVerdict=FAIL仍保留**；新结论由 `incremental_closeout_v1/completion.json`支持，不回填历史未知遥测。详见[增量收尾报告](D:/CAD-Harness0.2/docs/milestone-20-incremental-closeout.md)。M18/M19和P1仍未执行。
 
 ## 首次正式执行（历史）

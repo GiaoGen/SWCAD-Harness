@@ -32,7 +32,7 @@ public static class Wire
     {
         WriteIndented = true, MaxDepth = 48,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) }
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower, false) }
     };
     public static JsonElement Json(string json) { using var doc = JsonDocument.Parse(json); return doc.RootElement.Clone(); }
     public static object StateView(CadState? state) => state is null ? new { available = false } : (object)new

@@ -36,6 +36,8 @@ public static class PlaygroundHost
         app.MapGet("/api/solidworks/status", (HttpContext c) => Send(c, session, ApiResult.Ok("status", session.Status)));
         app.MapGet("/api/capabilities", (HttpContext c) => Send(c, session, session.Capabilities()));
         app.MapGet("/api/state", (HttpContext c) => Send(c, session, ApiResult.Ok("state", session.State)));
+        app.MapGet("/api/model", (HttpContext c) => Send(c, session, ApiResult.Ok("model", session.Model)));
+        app.MapGet("/api/model/relations", (HttpContext c) => Send(c, session, session.Relations(c.Request.Query["target"].ToString())));
         app.MapGet("/api/session/events", (HttpContext c) => Send(c, session, ApiResult.Ok("events", session.Events)));
         Post<LlmSettings>("/api/llm/configure", (value, _) => session.Configure(value));
         app.MapPost("/api/llm/clear", (HttpContext c) => RunRequest(c, session, session.Clear()));
@@ -46,6 +48,12 @@ public static class PlaygroundHost
         Post<PlanRequest>("/api/edit/preflight", (value, _) => session.Preflight(value, true));
         Post<ExecuteRequest>("/api/execute", (value, _) => session.Execute(value, false));
         Post<ExecuteRequest>("/api/edit/execute", (value, _) => session.Execute(value, true));
+        Post<ModelOpenRequest>("/api/model/open", (value, _) => session.OpenModel(value));
+        Post<CadHarness.Planning.ConstructionPlanRequest>("/api/construction/plan", (value, token) => session.PlanConstruction(value, token));
+        Post<PlanRequest>("/api/construction/preflight", (value, _) => session.PreflightConstruction(value));
+        Post<BatchPreviewRequest>("/api/batch/preview", (value, _) => session.PreviewBatch(value));
+        Post<ScalarPreviewRequest>("/api/scalar/preview", (value, _) => session.PreviewScalar(value));
+        Post<ModernConfirmation>("/api/modern/execute", (value, _) => session.ExecuteModern(value));
         app.MapPost("/api/solidworks/connect", (HttpContext c) => RunRequest(c, session, session.Connect()));
         app.MapPost("/api/part/close", (HttpContext c) => RunRequest(c, session, session.Close()));
         app.MapPost("/api/session/export", (HttpContext c) => RunRequest(c, session, session.Export()));

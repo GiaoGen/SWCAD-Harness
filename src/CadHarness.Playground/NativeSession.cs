@@ -11,7 +11,7 @@ namespace CadHarness.Playground;
 
 // Playground document ownership, not a CAD backend. Constructed lazily without
 // COM activation; all methods are called on the dispatcher thread.
-public sealed class NativeSession(string stateDirectory, string? template) : INativeSession
+public sealed partial class NativeSession(string stateDirectory, string? template) : INativeSession, IModernNativeSession
 {
     private SolidWorksConnection? connection;
     private SolidWorksExecutionContext? context;
@@ -53,7 +53,8 @@ public sealed class NativeSession(string stateDirectory, string? template) : INa
     }
     public NativeOutcome Create(CadProgram program, bool autoClose)
     {
-        if (Status.PartOpen || context is not null) throw new StateException("TEST_RESOURCE_LIMIT", "Close current Playground test Part first.");
+        if (Status.PartOpen || context is not null || external is not null || generic is not null) throw new StateException("TEST_RESOURCE_LIMIT", "Close current Playground test Part first.");
+        Model = null;
         var app = App;
         using var process = Process.GetProcessById(app.GetProcessID()); process.Refresh();
         Marshal.SetLastPInvokeError(0); var gdi = GetGuiResources(process.Handle, 0);
@@ -118,7 +119,8 @@ public sealed class NativeSession(string stateDirectory, string? template) : INa
     }
     public NativeStatus Close()
     {
-        if (context is null) return Status;
+        if (external is not null || generic is not null) return CloseModern();
+        if (context is null) { Model = null; return Status; }
         var doc = context.Document;
         // Identity is checked before CloseDoc(title), never accept a browser title.
         if (Documents().Any(d => Same(d, doc)))

@@ -1,5 +1,17 @@
 # Playground V0 architecture
 
+## M19 v0.3 Extension — 2026-10-13
+
+The original V0 description below remains the legacy workflow. M19 adds bounded model/relationship DTOs and thin Generic/External adapters in the same host; no second Binder, solver, or transaction backend.
+
+New routes: `GET /api/model`, `GET /api/model/relations?target=<exact-id>`, `POST /api/model/open`, `/api/construction/plan`, `/api/construction/preflight`, `/api/scalar/preview`, `/api/batch/preview`, and `/api/modern/execute`. Execution receives only a server preview ID/hash/revision/exact ordered targets/confirmation, never browser executable IR. Model intake requires an absolute Part path, supported mode, explicit confirmation, and a package root for restores.
+
+Construction reuses the production ConstructionPlanner and GenericPartSession; new-Part execution deterministically revalidates the original strict/semantic response in the owned context, never repaired or expanded semantic input. External inspection/copy/restore, Scalar, and M18 Batch query/approval reuse their production public entries. Generic display reads the authoritative package rather than a quarantined in-flight native capture. GET polling reads cached DTOs only.
+
+The UI distinguishes source/copy, managed/external, observed/committed/provisional/quarantined, read-only/qualified/ambiguous query, and Given/Defaulted/DerivedByRule. Native dependencies and declared design relations have separate provenance; graph display does not infer mechanical intent. Legacy and modern plans share one admission/STA and invalidate each other's approvals.
+
+Selected Lucide v1.8.0 ISC assets are vendored locally for tool icons; CSP remains self-only. `scripts/test-milestone19.ps1 -Mode All` runs pure/mock API and headless browser qualification with 0 native creations/opens. Native smoke is not part of this automated qualification. See [M19 verification](D:/CAD-Harness0.2/docs/milestone-19-verification.md).
+
 Local ASP.NET Core + dependency-free static HTML/CSS/JS over completed v0.2. All new production code is in `src/CadHarness.Playground`; no existing IR/Planning/State/SolidWorks semantics changed.
 
 ## Reused modules

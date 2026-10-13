@@ -61,7 +61,7 @@ async function action(path, body = {}) {
 function controls() {
   const busy = pending || snapshot?.busy || !snapshot;
   document.querySelectorAll('[data-action]').forEach(b => b.disabled = !!busy);
-  const p = currentPlan, live = snapshot?.solidworks?.partOpen && snapshot?.solidworks?.healthy;
+  const p = currentPlan, live = !snapshot?.model && snapshot?.solidworks?.partOpen && snapshot?.solidworks?.healthy;
   $('preflight').disabled = busy || !p || p.edit;
   $('execute').disabled = busy || !p || p.edit || !p.preflightId || !snapshot?.solidworks?.connected || snapshot?.solidworks?.partOpen;
   $('editGenerate').disabled = busy || !live;
@@ -73,6 +73,7 @@ function controls() {
   $('editGenerate').disabled ||= !snapshot?.llm?.configured;
   $('test').disabled = busy || !snapshot?.llm?.configured;
   $('confirmExecute').disabled = !!busy;
+  modernControls();
 }
 function renderPlan(p) {
   $('planBadge').textContent = p ? `${p.edit ? 'EDIT' : 'CREATE'} · ${p.preflightId ? 'PRECHECK PASS' : 'AWAITING PRECHECK'}` : 'NO PLAN';
@@ -96,12 +97,13 @@ function renderPlan(p) {
 async function refresh() {
   const [s, st, ev] = await Promise.all([api('/api/status'), api('/api/state'), api('/api/session/events')]);
   snapshot = s.details; const next = snapshot.plan;
+  modernRefresh(snapshot);
   if (pretty(next) !== pretty(currentPlan)) { currentPlan = next; renderPlan(next); }
   const sw = snapshot.solidworks; $('status').replaceChildren();
-  const badges = [['LLM', snapshot.llm.configured ? `${snapshot.llm.provider} · ${snapshot.llm.maskedKey}` : 'Not configured'], ['SOLIDWORKS', sw.connectionMode], ['Managed Part', sw.partOpen ? 'TEST PART OPEN' : 'None'], ['Session', sw.healthy ? 'Healthy' : 'Invalid'], ['Revision', sw.revision ?? '—'], ['Action', snapshot.busy ? 'BUSY' : 'Idle']];
+  const badges = [['LLM', snapshot.llm.configured ? `${snapshot.llm.provider} · ${snapshot.llm.maskedKey}` : 'Not configured'], ['SOLIDWORKS', sw.connectionMode], ['Part', snapshot.model ? `${snapshot.model.origin} / ${snapshot.model.owned ? 'owned' : 'inspection'}` : sw.partOpen ? 'managed v0.2 / owned' : 'None'], ['Session', sw.healthy ? 'Healthy' : 'Invalid'], ['Revision', sw.revision ?? '—'], ['Action', snapshot.busy ? 'BUSY' : 'Idle']];
   badges.forEach(([k, v]) => { const item = text('span', ''); item.append(text('b', k), text('span', v, k === 'Session' ? (sw.healthy ? 'pass' : 'fail') : '')); $('status').append(item); });
   $('revision').textContent = `REV ${sw.revision ?? '—'}`;
-  if (pretty(st.details) !== lastState) { lastState = pretty(st.details); $('stateTree').className = ''; $('stateTree').replaceChildren(st.details.available ? tree(st.details, 'Committed CADState', true) : text('div', 'No committed live state.', 'empty')); }
+  if (pretty(st.details) !== lastState) { lastState = pretty(st.details); $('stateTree').className = ''; $('stateTree').replaceChildren(st.details.available ? tree(st.details, st.details.model?.phase || 'Committed CADState', true) : text('div', 'No committed live state.', 'empty')); }
   $('events').replaceChildren(); for (const event of ev.details) { const row = text('div', '', 'event'); row.append(text('time', new Date(event.time).toLocaleTimeString()), text('span', `${event.stage} · ${event.failureCode || (event.success ? 'PASS' : 'FAIL')} · ${event.message}`, event.success ? '' : 'fail')); $('events').append(row); }
   controls();
 }
@@ -125,7 +127,7 @@ function confirm(edit) {
 }
 $('execute').onclick = () => confirm(false); $('editExecute').onclick = () => confirm(true);
 $('cancelConfirm').onclick = () => { confirmation = null; $('confirmation').close(); };
-$('confirmExecute').onclick = () => { const request = confirmation; confirmation = null; $('confirmation').close(); if (!request) return; const edit = request.edit; delete request.edit; action(edit ? '/api/edit/execute' : '/api/execute', request); };
+$('confirmExecute').onclick = () => { const request = confirmation; confirmation = null; $('confirmation').close(); if (!request) return; if (request.modern) { action(request.route, request.body); return; } const edit = request.edit; delete request.edit; action(edit ? '/api/edit/execute' : '/api/execute', request); };
 document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () => { document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('selected', b === button)); document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === button.dataset.tab)); });
 function download(name, data) { const url = URL.createObjectURL(new Blob([pretty(data)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
 $('download').onclick = () => { if (currentPlan) download('cad-program.json', currentPlan.program); };
@@ -135,4 +137,4 @@ function toast(message) { $('toast').textContent = message; $('toast').style.dis
 try { document.documentElement.classList.toggle('light', localStorage.getItem('playground-theme') === 'light'); } catch { }
 $('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); try { localStorage.setItem('playground-theme', light ? 'light' : 'dark'); } catch { } };
 async function initialize() { try { capability = (await api('/api/capabilities')).details; $('capabilityTree').replaceChildren(tree(capability, 'Construction runtime projection', true)); await refresh(); } catch { showResult({ success: false, stage: 'connection', failureCode: 'HOST_UNAVAILABLE', message: 'Cannot reach the local host.' }); } }
-controls(); initialize(); setInterval(() => { if (!pending && !$('confirmation').open) refresh().catch(() => { snapshot = null; controls(); $('pipelineSummary').textContent = 'Host unavailable. Native action status is unknown; refresh before taking further action.'; }); }, 3000);
+window.addEventListener('DOMContentLoaded', () => { controls(); initialize(); }); setInterval(() => { if (!pending && !$('confirmation').open) refresh().catch(() => { snapshot = null; controls(); $('pipelineSummary').textContent = 'Host unavailable. Native action status is unknown; refresh before taking further action.'; }); }, 3000);
